@@ -1,3 +1,4 @@
 fastapi[all]
 motor[srv]
-uvicorn
+uvicorn[standard]
+pymongo[srv]
