@@ -433,54 +433,28 @@ async def get_vlogs():
         
         vlogs = [convert_objectid(item) for item in vlogs]
         
-        # Get list of actually available video files
-        available_files = {f.name for f in UPLOAD_DIR.glob("*.mp4")}
-        print(f"📂 Found {len(available_files)} actual video files on server")
-        
-        # Filter and ensure each vlog has a proper video_url AND the file exists
+        # Simply return all vlogs with video_id or video_url
+        # Don't filter based on filesystem files since we're using GridFS now
         valid_vlogs = []
         for vlog in vlogs:
+            # Skip local file paths
             video_url = vlog.get('video_url', '')
-            
-            # Check if it's a local file path (should be skipped)
             if video_url and isinstance(video_url, str) and video_url.startswith('file://'):
                 print(f"⚠️ Skipping local file: {vlog.get('_id')}")
                 continue
             
-            # Check if video_url is None or empty or not a valid HTTP URL
-            if not video_url or not isinstance(video_url, str) or not video_url.startswith('http'):
-                # If no video_url or it's a local path, try to construct it from filename
-                if 'filename' in vlog and vlog['filename']:
-                    filename = vlog['filename']
-                    
-                    # Check if file actually exists on server
-                    if filename not in available_files:
-                        print(f"⚠️ Skipping vlog {vlog.get('_id')} - file not found on server: {filename}")
-                        continue
-                    
-                    # URL encode the filename to handle spaces and special characters
-                    encoded_filename = quote(filename)
-                    vlog['video_url'] = f"{BASE_URL}/videos/{encoded_filename}"
-                    print(f"📝 Constructed video_url for {vlog.get('_id')}: {vlog['video_url']}")
-                    valid_vlogs.append(vlog)
-                else:
-                    print(f"⚠️ Skipping vlog {vlog.get('_id')} - no valid video source")
-                    continue
-            else:
-                # Has valid HTTP URL - check if file exists
-                if 'filename' in vlog:
-                    if vlog['filename'] not in available_files:
-                        print(f"⚠️ Skipping vlog {vlog.get('_id')} - file not found on server: {vlog['filename']}")
-                        continue
+            # Include if has video_id or valid video_url
+            if vlog.get('video_id') or (video_url and video_url.startswith('http')):
                 valid_vlogs.append(vlog)
+            else:
+                print(f"⚠️ Skipping vlog {vlog.get('_id')} - no video_id or video_url")
         
-        print(f"✅ Returning {len(valid_vlogs)} valid vlogs (filtered from {len(vlogs)} total)")
+        print(f"✅ Returning {len(valid_vlogs)} valid vlogs")
         return valid_vlogs
     except Exception as e:
         print(f"❌ Error in get_vlogs: {str(e)}")
         import traceback
         traceback.print_exc()
-        # Return empty array instead of raising error to prevent dashboard crash
         return []
 
 @app.get("/gps")
@@ -495,36 +469,47 @@ async def get_gps():
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
     return HTMLResponse(content="""<!DOCTYPE html>
-<html><head><title>EmoGo Dashboard</title><meta charset="UTF-8">
-<style>body{font-family:Inter,system-ui,sans-serif;margin:0;min-height:100vh;background:#071023;color:#e6eef8;padding:28px}
-header{display:flex;justify-content:space-between;margin-bottom:24px}h1{font-size:20px;margin:0}.subtitle{color:#9aa4b2;font-size:13px}
-.btn{background:#7c3aed;padding:10px 14px;border-radius:8px;color:#fff;border:none;cursor:pointer}
-.panel{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{background:#0b1220;border-radius:12px;padding:18px}
-.card h2{margin:0 0 8px;font-size:14px}.data-preview{background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;max-height:420px;overflow:auto}
-.vlog-item{display:flex;gap:12px;padding:12px;margin:8px 0;background:rgba(255,255,255,0.02);border-radius:8px}
-.vlog-thumb{width:100px;height:60px;background:#071029;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px}
-.vlog-meta{flex:1}.link-btn{background:transparent;border:1px solid rgba(255,255,255,0.1);color:#e6eef8;padding:8px 12px;border-radius:8px;text-decoration:none}
-.small{color:#9aa4b2;font-size:12px}pre{background:#071229;padding:10px;border-radius:8px;overflow:auto;font-size:12px}
-</style></head><body>
-<header><div><h1>EmoGo Dashboard</h1><div class="subtitle">Videos stored in MongoDB GridFS</div></div>
-<button class="btn" onclick="loadAllData()">🔄 Refresh</button></header>
+<html><head><title>EmoGo Dashboard</title><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fff;color:#1a1a1a;padding:40px 20px}
+.container{max-width:1200px;margin:0 auto}
+header{border-bottom:1px solid #e5e5e5;padding-bottom:20px;margin-bottom:40px}
+h1{font-size:28px;font-weight:600;margin-bottom:8px}
+.subtitle{color:#666;font-size:14px}
+.btn{background:#000;color:#fff;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500}
+.btn:hover{background:#333}
+.panel{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-bottom:40px}
+.card{background:#fafafa;border:1px solid #e5e5e5;border-radius:8px;padding:24px}
+.card h2{font-size:16px;font-weight:600;margin-bottom:16px}
+.count{color:#666;font-size:13px;margin-bottom:12px}
+.data-preview{background:#fff;border:1px solid #e5e5e5;border-radius:6px;padding:16px;max-height:400px;overflow:auto}
+.vlog-item{display:flex;gap:16px;padding:16px;margin-bottom:12px;background:#fff;border:1px solid #e5e5e5;border-radius:8px}
+.vlog-thumb{width:120px;height:68px;background:#f5f5f5;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#999;flex-shrink:0}
+.vlog-meta{flex:1;min-width:0}.vlog-title{font-weight:500;margin-bottom:4px}.small{color:#666;font-size:13px}
+.link-btn{display:inline-block;background:#000;color:#fff;padding:8px 16px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:500}
+.link-btn:hover{background:#333}
+pre{background:#f5f5f5;padding:12px;border-radius:6px;font-size:12px;overflow:auto;border:1px solid #e5e5e5}
+@media(max-width:768px){.panel{grid-template-columns:1fr}}
+</style></head><body><div class="container">
+<header><h1>EmoGo Dashboard</h1><p class="subtitle">Videos stored permanently in MongoDB GridFS</p></header>
+<div style="text-align:right;margin-bottom:20px"><button class="btn" onclick="loadAllData()">↻ Refresh</button></div>
 <section class="panel">
-<div class="card"><h2>Sentiments</h2><div class="small">Total: <strong id="sentiment-count">0</strong></div>
+<div class="card"><h2>Sentiments</h2><p class="count">Total: <strong id="sentiment-count">0</strong></p>
 <div class="data-preview" id="sentiments-data">Loading...</div></div>
-<div class="card"><h2>Vlogs</h2><div class="small">Total: <strong id="vlog-count">0</strong></div>
+<div class="card"><h2>Vlogs</h2><p class="count">Total: <strong id="vlog-count">0</strong></p>
 <div class="data-preview" id="vlogs-data">Loading...</div></div>
-<div class="card"><h2>GPS</h2><div class="small">Total: <strong id="gps-count">0</strong></div>
+<div class="card"><h2>GPS</h2><p class="count">Total: <strong id="gps-count">0</strong></p>
 <div class="data-preview" id="gps-data">Loading...</div></div>
-</section>
+</section></div>
 <script>
 async function loadData(e,t,n){try{const o=await fetch(e);if(!o.ok)throw new Error("HTTP "+o.status);
 const a=await o.json();if(document.getElementById(n).textContent=a.length,!Array.isArray(a))return void(document.getElementById(t).innerHTML="<pre>Error</pre>");
-if("/vlogs"===e){if(0===a.length)return void(document.getElementById(t).innerHTML='<div class="small">No videos yet</div>');
-let e="";a.forEach(((t,n)=>{let o=null;t.video_id?o="/stream-video/"+t.video_id:t.video_url&&(t.video_url.startsWith("http")||t.video_url.includes("/stream-video/"))?o=t.video_url:t.filename&&(o="/videos/"+encodeURIComponent(t.filename));
-const a=o?'<a class="link-btn" href="'+o+'" target="_blank">Open Video</a>':'<div class="small">No video</div>';
-e+='<div class="vlog-item"><div class="vlog-thumb">VIDEO</div><div class="vlog-meta"><div><strong>Video '+(n+1)+"</strong> <span class='small'>"+
-(t.user_id||"N/A")+'</span></div><div class="small">Duration: '+(t.duration||"N/A")+"s</div></div><div>"+a+"</div></div>"})),
-document.getElementById(t).innerHTML=e}else document.getElementById(t).innerHTML=0===a.length?'<div class="small">No data yet</div>':"<pre>"+JSON.stringify(a,null,2)+"</pre>"}catch(e){
+if("/vlogs"===e){if(0===a.length)return void(document.getElementById(t).innerHTML='<p class="small">No videos yet</p>');
+let e="";a.forEach(((t,n)=>{let o=null;t.video_id?o="/stream-video/"+t.video_id:t.video_url&&t.video_url.startsWith("http")&&(o=t.video_url);
+const a=o?'<a class="link-btn" href="'+o+'" target="_blank">Open Video</a>':'<p class="small">No video available</p>';
+e+='<div class="vlog-item"><div class="vlog-thumb">VIDEO</div><div class="vlog-meta"><div class="vlog-title">Video '+(n+1)+' · '+(t.user_id||"N/A")+
+'</div><p class="small">Duration: '+(t.duration||"N/A")+'s</p></div><div>'+a+"</div></div>"})),
+document.getElementById(t).innerHTML=e}else document.getElementById(t).innerHTML=0===a.length?'<p class="small">No data yet</p>':"<pre>"+JSON.stringify(a,null,2)+"</pre>"}catch(e){
 document.getElementById(t).innerHTML="<pre>Error: "+e.message+"</pre>",document.getElementById(n).textContent="0"}}
 function loadAllData(){loadData("/sentiments","sentiments-data","sentiment-count"),loadData("/vlogs","vlogs-data","vlog-count"),
 loadData("/gps","gps-data","gps-count")}window.onload=loadAllData;
