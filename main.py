@@ -471,25 +471,25 @@ async def dashboard():
     return HTMLResponse(content="""<!DOCTYPE html>
 <html><head><title>EmoGo Dashboard</title><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fff;color:#1a1a1a;padding:40px 20px}
-.container{max-width:1200px;margin:0 auto}
-header{border-bottom:1px solid #e5e5e5;padding-bottom:20px;margin-bottom:40px}
-h1{font-size:28px;font-weight:600;margin-bottom:8px}
-.subtitle{color:#666;font-size:14px}
-.btn{background:#000;color:#fff;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fff;color:#1a1a1a;padding:20px}
+.container{max-width:1400px;margin:0 auto}
+header{border-bottom:1px solid #e5e5e5;padding-bottom:20px;margin-bottom:30px}
+h1{font-size:24px;font-weight:600;margin-bottom:6px}
+.subtitle{color:#666;font-size:13px}
+.btn{background:#000;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500}
 .btn:hover{background:#333}
-.panel{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-bottom:40px}
-.card{background:#fafafa;border:1px solid #e5e5e5;border-radius:8px;padding:24px}
-.card h2{font-size:16px;font-weight:600;margin-bottom:16px}
-.count{color:#666;font-size:13px;margin-bottom:12px}
-.data-preview{background:#fff;border:1px solid #e5e5e5;border-radius:6px;padding:16px;max-height:400px;overflow:auto}
-.vlog-item{display:flex;gap:16px;padding:16px;margin-bottom:12px;background:#fff;border:1px solid #e5e5e5;border-radius:8px}
-.vlog-thumb{width:120px;height:68px;background:#f5f5f5;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#999;flex-shrink:0}
-.vlog-meta{flex:1;min-width:0}.vlog-title{font-weight:500;margin-bottom:4px}.small{color:#666;font-size:13px}
-.link-btn{display:inline-block;background:#000;color:#fff;padding:8px 16px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:500}
+.panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;margin-bottom:30px}
+.card{background:#fafafa;border:1px solid #e5e5e5;border-radius:8px;padding:20px;min-width:0}
+.card h2{font-size:15px;font-weight:600;margin-bottom:12px}
+.count{color:#666;font-size:12px;margin-bottom:10px}
+.data-preview{background:#fff;border:1px solid #e5e5e5;border-radius:6px;padding:12px;max-height:350px;overflow:auto;word-wrap:break-word}
+.vlog-item{display:flex;gap:12px;padding:12px;margin-bottom:10px;background:#fff;border:1px solid #e5e5e5;border-radius:6px;align-items:center}
+.vlog-thumb{width:80px;height:50px;background:#f5f5f5;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999;flex-shrink:0}
+.vlog-meta{flex:1;min-width:0}.vlog-title{font-weight:500;margin-bottom:3px;font-size:13px}.small{color:#666;font-size:12px}
+.link-btn{display:inline-block;background:#000;color:#fff;padding:6px 12px;border-radius:5px;text-decoration:none;font-size:12px;font-weight:500;white-space:nowrap}
 .link-btn:hover{background:#333}
-pre{background:#f5f5f5;padding:12px;border-radius:6px;font-size:12px;overflow:auto;border:1px solid #e5e5e5}
-@media(max-width:768px){.panel{grid-template-columns:1fr}}
+pre{background:#f5f5f5;padding:10px;border-radius:6px;font-size:11px;overflow:auto;border:1px solid #e5e5e5;white-space:pre-wrap;word-wrap:break-word}
+@media(max-width:900px){.panel{grid-template-columns:1fr}.vlog-item{flex-direction:column;align-items:flex-start}}
 </style></head><body><div class="container">
 <header><h1>EmoGo Dashboard</h1><p class="subtitle">Videos stored permanently in MongoDB GridFS</p></header>
 <div style="text-align:right;margin-bottom:20px"><button class="btn" onclick="loadAllData()">↻ Refresh</button></div>
@@ -502,15 +502,15 @@ pre{background:#f5f5f5;padding:12px;border-radius:6px;font-size:12px;overflow:au
 <div class="data-preview" id="gps-data">Loading...</div></div>
 </section></div>
 <script>
-async function loadData(e,t,n){try{const o=await fetch(e);if(!o.ok)throw new Error("HTTP "+o.status);
-const a=await o.json();if(document.getElementById(n).textContent=a.length,!Array.isArray(a))return void(document.getElementById(t).innerHTML="<pre>Error</pre>");
+async function loadData(e,t,n){try{console.log("Loading:",e);const o=await fetch(e);if(!o.ok)throw new Error("HTTP "+o.status);
+const a=await o.json();console.log("Data:",e,a);if(document.getElementById(n).textContent=a.length,!Array.isArray(a))return void(document.getElementById(t).innerHTML="<pre>Error: expected array</pre>");
 if("/vlogs"===e){if(0===a.length)return void(document.getElementById(t).innerHTML='<p class="small">No videos yet</p>');
-let e="";a.forEach(((t,n)=>{let o=null;t.video_id?o="/stream-video/"+t.video_id:t.video_url&&t.video_url.startsWith("http")&&(o=t.video_url);
-const a=o?'<a class="link-btn" href="'+o+'" target="_blank">Open Video</a>':'<p class="small">No video available</p>';
+let e="";a.forEach(((t,n)=>{console.log("Vlog item:",t);let o=null;t.video_id?o="/stream-video/"+t.video_id:t.video_url&&t.video_url.startsWith("http")&&(o=t.video_url);
+console.log("Video URL:",o);const a=o?'<a class="link-btn" href="'+o+'" target="_blank">Open Video</a>':'<p class="small">No video</p>';
 e+='<div class="vlog-item"><div class="vlog-thumb">VIDEO</div><div class="vlog-meta"><div class="vlog-title">Video '+(n+1)+' · '+(t.user_id||"N/A")+
 '</div><p class="small">Duration: '+(t.duration||"N/A")+'s</p></div><div>'+a+"</div></div>"})),
 document.getElementById(t).innerHTML=e}else document.getElementById(t).innerHTML=0===a.length?'<p class="small">No data yet</p>':"<pre>"+JSON.stringify(a,null,2)+"</pre>"}catch(e){
-document.getElementById(t).innerHTML="<pre>Error: "+e.message+"</pre>",document.getElementById(n).textContent="0"}}
+console.error("Error:",e);document.getElementById(t).innerHTML="<pre>Error: "+e.message+"</pre>",document.getElementById(n).textContent="0"}}
 function loadAllData(){loadData("/sentiments","sentiments-data","sentiment-count"),loadData("/vlogs","vlogs-data","vlog-count"),
 loadData("/gps","gps-data","gps-count")}window.onload=loadAllData;
 </script></body></html>""")
