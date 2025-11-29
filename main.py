@@ -1,16 +1,25 @@
-from fastapi import FastAPI, HTTPException, File, UploadFile
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 from bson import ObjectId
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+from pathlib import Path
 import io
+import os
+import json
 
 MONGODB_URI = "mongodb+srv://Rafa-612:eQ8IOESaO4lyLnm2@rafa-612.qiobhis.mongodb.net/?appName=Rafa-612"  # your URI
 DB_NAME = "emogo_db"  # your DB name
+BASE_URL = os.getenv("BASE_URL", "https://emogo-backend-rafa-612.onrender.com")
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+
+# Create upload directory
+UPLOAD_DIR = Path("uploads/videos")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI()
 
@@ -111,57 +120,112 @@ async def create_vlog(vlog: Vlog):
 @app.post("/upload-video")
 async def upload_video(
     file: UploadFile = File(...),
-    user_id: str = None,
-    duration: float = None,
-    location: str = None
+    user_id: str = Form(...),
+    metadata: Optional[str] = Form(None)
 ):
     """
-    Upload video file to MongoDB GridFS
-    Returns video_id that can be used to retrieve the video
+    Upload video file to server filesystem
+    Returns video URL that can be used to access the video
     """
     try:
-        # Read video file
-        video_content = await file.read()
+        # Check file size
+        content = await file.read()
+        if len(content) > MAX_UPLOAD_SIZE:
+            raise HTTPException(status_code=413, detail="File too large. Max size is 10MB")
         
-        # Upload to GridFS
-        file_id = await app.fs.upload_from_stream(
-            file.filename,
-            video_content,
-            metadata={
-                "content_type": file.content_type,
-                "user_id": user_id,
-                "duration": duration,
-                "location": location,
-                "upload_time": datetime.utcnow().isoformat()
-            }
-        )
+        # Validate file type
+        if not file.content_type or not file.content_type.startswith('video/'):
+            raise HTTPException(status_code=400, detail="Invalid file type. Only video files are allowed")
         
-        # Save metadata to vlogs collection
-        vlog_data = {
-            "user_id": user_id,
-            "video_id": str(file_id),
-            "filename": file.filename,
-            "duration": duration,
-            "location": location,
-            "timestamp": datetime.utcnow().isoformat()
-        }
+        # Parse metadata
+        metadata_dict = {}
+        if metadata:
+            try:
+                metadata_dict = json.loads(metadata)
+            except:
+                pass
         
-        result = await app.mongodb["vlogs"].insert_one(vlog_data)
-        vlog_data["_id"] = str(result.inserted_id)
+        # Generate unique filename
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        filename = f"{user_id}_{timestamp}.mp4"
+        file_path = UPLOAD_DIR / filename
+        
+        # Save video file
+        with open(file_path, "wb") as buffer:
+            buffer.write(content)
+        
+        # Generate accessible URL
+        file_url = f"{BASE_URL}/videos/{filename}"
+        
+        print(f"✅ Video uploaded successfully: {filename}")
+        print(f"📍 File path: {file_path}")
+        print(f"🌐 Public URL: {file_url}")
         
         return {
             "status": "success",
-            "video_id": str(file_id),
-            "download_url": f"/download-video/{str(file_id)}",
-            "data": vlog_data
+            "file_url": file_url,
+            "filename": filename,
+            "user_id": user_id,
+            "uploaded_at": datetime.utcnow().isoformat(),
+            "metadata": metadata_dict
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Upload error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/videos/{filename}")
+async def get_video(filename: str):
+    """
+    Stream video file for playback in browser
+    """
+    try:
+        file_path = UPLOAD_DIR / filename
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Video not found")
+        
+        return FileResponse(
+            path=file_path,
+            media_type="video/mp4",
+            filename=filename,
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Accept-Ranges": "bytes"
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/videos/{filename}/download")
+async def download_video_file(filename: str):
+    """
+    Force download video file
+    """
+    try:
+        file_path = UPLOAD_DIR / filename
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Video not found")
+        
+        return FileResponse(
+            path=file_path,
+            media_type="video/mp4",
+            filename=filename,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/download-video/{video_id}")
 async def download_video(video_id: str):
     """
-    Download video file from MongoDB GridFS
+    Download video file from MongoDB GridFS (legacy support)
     """
     try:
         # Get file from GridFS
@@ -178,7 +242,8 @@ async def download_video(video_id: str):
             io.BytesIO(video_content),
             media_type=content_type,
             headers={
-                "Content-Disposition": f'attachment; filename="{filename}"'
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Accept-Ranges": "bytes"
             }
         )
     except Exception as e:
@@ -340,7 +405,7 @@ async def dashboard():
                     document.getElementById(countId).textContent = data.length;
                     
                     if (endpoint === '/vlogs') {
-                        // Special handling for vlogs with video links
+                        // Special handling for vlogs with video player
                         let html = '';
                         data.forEach((item, index) => {
                             html += `<div class="video-item">
@@ -349,10 +414,39 @@ async def dashboard():
                                 Duration: ${item.duration || 'N/A'}s<br>
                                 Time: ${item.timestamp || 'N/A'}<br>`;
                             
-                            if (item.video_id) {
-                                html += `<a href="/download-video/${item.video_id}" class="download-btn" style="margin-top: 10px;">📥 Download Video</a>`;
+                            if (item.video_url && item.video_url.includes('/videos/')) {
+                                // Server-hosted video
+                                html += `
+                                    <video width="320" height="240" controls style="margin-top: 10px; border-radius: 4px;">
+                                        <source src="${item.video_url}" type="video/mp4">
+                                        Your browser does not support the video tag.
+                                    </video><br>
+                                    <a href="${item.video_url}/download" class="download-btn" style="margin-top: 10px;">📥 Download Video</a>
+                                `;
+                            } else if (item.video_id) {
+                                // GridFS video
+                                html += `
+                                    <video width="320" height="240" controls style="margin-top: 10px; border-radius: 4px;">
+                                        <source src="/download-video/${item.video_id}" type="video/mp4">
+                                        Your browser does not support the video tag.
+                                    </video><br>
+                                    <a href="/download-video/${item.video_id}" class="download-btn" style="margin-top: 10px;">📥 Download Video</a>
+                                `;
+                            } else if (item.video_url && item.video_url.startsWith('http')) {
+                                // External URL
+                                html += `
+                                    <video width="320" height="240" controls style="margin-top: 10px; border-radius: 4px;">
+                                        <source src="${item.video_url}" type="video/mp4">
+                                        Your browser does not support the video tag.
+                                    </video><br>
+                                    <a href="${item.video_url}" class="download-btn" style="margin-top: 10px;" target="_blank">📥 Download Video</a>
+                                `;
                             } else if (item.video_url) {
-                                html += `<br>Video URL: ${item.video_url}`;
+                                // Local file path (not accessible)
+                                html += `<br><span style="color: #f44336;">⚠️ Video stored locally on device (not uploaded to server)</span><br>
+                                         <small style="color: #666;">${item.video_url}</small>`;
+                            } else {
+                                html += `<br><span style="color: #f44336;">⚠️ No video file uploaded</span>`;
                             }
                             
                             html += `</div>`;
