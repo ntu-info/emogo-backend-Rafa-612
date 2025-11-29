@@ -530,25 +530,48 @@ window.onload=loadAllData;
 @app.get("/debug/videos")
 async def debug_videos():
     """
-    Debug endpoint to check uploaded videos
+    Debug endpoint to check uploaded videos in both filesystem and GridFS
     """
     try:
+        # Check filesystem videos
         video_files = list(UPLOAD_DIR.glob("*.mp4"))
+        
+        # Check GridFS videos
+        gridfs_files = []
+        cursor = app.fs.find()
+        async for grid_file in cursor:
+            gridfs_files.append({
+                "file_id": str(grid_file._id),
+                "filename": grid_file.filename,
+                "length": grid_file.length,
+                "upload_date": grid_file.upload_date.isoformat() if grid_file.upload_date else None,
+                "metadata": grid_file.metadata,
+                "stream_url": f"{BASE_URL}/stream-video/{str(grid_file._id)}",
+                "download_url": f"{BASE_URL}/download-video/{str(grid_file._id)}"
+            })
+        
         return {
-            "upload_dir": str(UPLOAD_DIR.absolute()),
-            "exists": UPLOAD_DIR.exists(),
-            "total_videos": len(video_files),
-            "videos": [
-                {
-                    "filename": f.name,
-                    "size": f.stat().st_size,
-                    "url": f"{BASE_URL}/videos/{f.name}"
-                }
-                for f in video_files
-            ]
+            "filesystem": {
+                "upload_dir": str(UPLOAD_DIR.absolute()),
+                "exists": UPLOAD_DIR.exists(),
+                "total_videos": len(video_files),
+                "videos": [
+                    {
+                        "filename": f.name,
+                        "size": f.stat().st_size,
+                        "url": f"{BASE_URL}/videos/{f.name}"
+                    }
+                    for f in video_files
+                ]
+            },
+            "gridfs": {
+                "total_videos": len(gridfs_files),
+                "videos": gridfs_files
+            }
         }
     except Exception as e:
-        return {"error": str(e)}
+        import traceback
+        return {"error": str(e), "traceback": traceback.format_exc()}
 
 @app.delete("/admin/clean-local-vlogs")
 async def clean_local_vlogs():
