@@ -348,12 +348,15 @@ async def get_sentiments():
 @app.get("/vlogs")
 async def get_vlogs():
     try:
+        print("📋 Fetching vlogs from database...")
         vlogs = await app.mongodb["vlogs"].find().to_list(1000)
+        print(f"📊 Found {len(vlogs)} vlogs")
+        
         vlogs = [convert_objectid(item) for item in vlogs]
         
         # Ensure each vlog has a proper video_url
         for vlog in vlogs:
-            if 'video_url' not in vlog or not vlog['video_url'].startswith('http'):
+            if 'video_url' not in vlog or not vlog.get('video_url', '').startswith('http'):
                 # If no video_url or it's a local path, construct it from filename
                 if 'filename' in vlog:
                     # URL encode the filename to handle spaces and special characters
@@ -361,8 +364,12 @@ async def get_vlogs():
                     vlog['video_url'] = f"{BASE_URL}/videos/{encoded_filename}"
                     print(f"📝 Constructed video_url for {vlog.get('_id')}: {vlog['video_url']}")
         
+        print(f"✅ Returning {len(vlogs)} vlogs")
         return vlogs
     except Exception as e:
+        print(f"❌ Error in get_vlogs: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/gps")
@@ -494,6 +501,17 @@ async def dashboard():
                 try {
                     const response = await fetch(endpoint);
                     const data = await response.json();
+                    
+                    // Check if data is an array
+                    if (!Array.isArray(data)) {
+                        console.error('Expected array but got:', typeof data, data);
+                        document.getElementById(elementId).innerHTML = 
+                            '<p style="color: red;">Error: Invalid data format (expected array)</p><pre>' + 
+                            JSON.stringify(data, null, 2) + '</pre>';
+                        document.getElementById(countId).textContent = '0';
+                        return;
+                    }
+                    
                     document.getElementById(countId).textContent = data.length;
                     
                     if (endpoint === '/vlogs') {
