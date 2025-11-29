@@ -476,8 +476,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 header{border-bottom:1px solid #e5e5e5;padding-bottom:20px;margin-bottom:30px}
 h1{font-size:24px;font-weight:600;margin-bottom:6px}
 .subtitle{color:#666;font-size:13px}
-.btn{background:#000;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500}
+.btn{background:#000;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;margin-left:8px}
 .btn:hover{background:#333}
+.btn.primary{background:#007aff}.btn.primary:hover{background:#0051d5}
 .panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;margin-bottom:30px}
 .card{background:#fafafa;border:1px solid #e5e5e5;border-radius:8px;padding:20px;min-width:0}
 .card h2{font-size:15px;font-weight:600;margin-bottom:12px}
@@ -492,7 +493,10 @@ pre{background:#f5f5f5;padding:10px;border-radius:6px;font-size:11px;overflow:au
 @media(max-width:900px){.panel{grid-template-columns:1fr}.vlog-item{flex-direction:column;align-items:flex-start}}
 </style></head><body><div class="container">
 <header><h1>EmoGo Dashboard</h1><p class="subtitle">Videos stored permanently in MongoDB GridFS</p></header>
-<div style="text-align:right;margin-bottom:20px"><button class="btn" onclick="loadAllData()">↻ Refresh</button></div>
+<div style="text-align:right;margin-bottom:20px">
+<button class="btn primary" onclick="downloadAllData()">⬇ Download All Data</button>
+<button class="btn" onclick="loadAllData()">↻ Refresh</button>
+</div>
 <section class="panel">
 <div class="card"><h2>Sentiments</h2><p class="count">Total: <strong id="sentiment-count">0</strong></p>
 <div class="data-preview" id="sentiments-data">Loading...</div></div>
@@ -502,17 +506,25 @@ pre{background:#f5f5f5;padding:10px;border-radius:6px;font-size:11px;overflow:au
 <div class="data-preview" id="gps-data">Loading...</div></div>
 </section></div>
 <script>
-async function loadData(e,t,n){try{console.log("Loading:",e);const o=await fetch(e);if(!o.ok)throw new Error("HTTP "+o.status);
-const a=await o.json();console.log("Data:",e,a);if(document.getElementById(n).textContent=a.length,!Array.isArray(a))return void(document.getElementById(t).innerHTML="<pre>Error: expected array</pre>");
+let allData={sentiments:[],vlogs:[],gps:[]};
+async function loadData(e,t,n){try{const o=await fetch(e);if(!o.ok)throw new Error("HTTP "+o.status);
+const a=await o.json();if(e==="/sentiments")allData.sentiments=a;else if(e==="/vlogs")allData.vlogs=a;else if(e==="/gps")allData.gps=a;
+document.getElementById(n).textContent=a.length;if(!Array.isArray(a))return void(document.getElementById(t).innerHTML="<pre>Error</pre>");
 if("/vlogs"===e){if(0===a.length)return void(document.getElementById(t).innerHTML='<p class="small">No videos yet</p>');
-let e="";a.forEach(((t,n)=>{console.log("Vlog item:",t);let o=null;t.video_id?o="/stream-video/"+t.video_id:t.video_url&&t.video_url.startsWith("http")&&(o=t.video_url);
-console.log("Video URL:",o);const a=o?'<a class="link-btn" href="'+o+'" target="_blank">Open Video</a>':'<p class="small">No video</p>';
+let e="";a.forEach(((t,n)=>{let o=null,r=null;t.video_id?(o="/download-video/"+t.video_id,r=t.video_id):t.video_url&&t.video_url.startsWith("http")&&(o=t.video_url,r="video_"+(n+1));
+const d=o?'<a class="link-btn" href="'+o+'" download="'+(r||"video")+'.mp4">⬇ Download</a>':'<p class="small">No video</p>';
 e+='<div class="vlog-item"><div class="vlog-thumb">VIDEO</div><div class="vlog-meta"><div class="vlog-title">Video '+(n+1)+' · '+(t.user_id||"N/A")+
-'</div><p class="small">Duration: '+(t.duration||"N/A")+'s</p></div><div>'+a+"</div></div>"})),
+'</div><p class="small">Duration: '+(t.duration||"N/A")+'s</p></div><div>'+d+"</div></div>"})),
 document.getElementById(t).innerHTML=e}else document.getElementById(t).innerHTML=0===a.length?'<p class="small">No data yet</p>':"<pre>"+JSON.stringify(a,null,2)+"</pre>"}catch(e){
-console.error("Error:",e);document.getElementById(t).innerHTML="<pre>Error: "+e.message+"</pre>",document.getElementById(n).textContent="0"}}
-function loadAllData(){loadData("/sentiments","sentiments-data","sentiment-count"),loadData("/vlogs","vlogs-data","vlog-count"),
-loadData("/gps","gps-data","gps-count")}window.onload=loadAllData;
+document.getElementById(t).innerHTML="<pre>Error: "+e.message+"</pre>",document.getElementById(n).textContent="0"}}
+function loadAllData(){loadData("/sentiments","sentiments-data","sentiment-count");loadData("/vlogs","vlogs-data","vlog-count");
+loadData("/gps","gps-data","gps-count")}
+async function downloadAllData(){try{const e={sentiments:allData.sentiments,vlogs:allData.vlogs,gps:allData.gps,
+exported_at:new Date().toISOString(),total_records:{sentiments:allData.sentiments.length,vlogs:allData.vlogs.length,gps:allData.gps.length}};
+const t=JSON.stringify(e,null,2),n=new Blob([t],{type:"application/json"}),o=document.createElement("a"),
+a="emogo_all_data_"+new Date().toISOString().split("T")[0]+".json";o.href=URL.createObjectURL(n);o.download=a;
+document.body.appendChild(o);o.click();document.body.removeChild(o);URL.revokeObjectURL(o.href)}catch(e){alert("Error: "+e.message)}}
+window.onload=loadAllData;
 </script></body></html>""")
 
 @app.get("/debug/videos")
