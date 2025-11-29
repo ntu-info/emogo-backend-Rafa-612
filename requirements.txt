@@ -2,3 +2,4 @@ fastapi[all]
 motor[srv]
 uvicorn[standard]
 pymongo[srv]
+python-multipart

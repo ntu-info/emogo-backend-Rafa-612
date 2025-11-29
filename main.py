@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 from bson import ObjectId
 from pydantic import BaseModel
@@ -64,6 +65,9 @@ async def startup_db_client():
     app.mongodb_client = AsyncIOMotorClient(MONGODB_URI)
     app.mongodb = app.mongodb_client[DB_NAME]
     app.fs = AsyncIOMotorGridFSBucket(app.mongodb)
+    print(f"✅ MongoDB connected to {DB_NAME}")
+    print(f"✅ Upload directory: {UPLOAD_DIR.absolute()}")
+    print(f"✅ Upload directory exists: {UPLOAD_DIR.exists()}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
@@ -128,44 +132,64 @@ async def upload_video(
     Returns video URL that can be used to access the video
     """
     try:
-        # Check file size
-        content = await file.read()
-        if len(content) > MAX_UPLOAD_SIZE:
-            raise HTTPException(status_code=413, detail="File too large. Max size is 10MB")
+        print(f"📤 Receiving video upload request")
+        print(f"📦 File: {file.filename}, Content-Type: {file.content_type}")
+        print(f"👤 User ID: {user_id}")
         
-        # Validate file type
-        if not file.content_type or not file.content_type.startswith('video/'):
-            raise HTTPException(status_code=400, detail="Invalid file type. Only video files are allowed")
+        # Read file content
+        content = await file.read()
+        file_size = len(content)
+        print(f"📊 File size: {file_size} bytes ({file_size / 1024 / 1024:.2f} MB)")
+        
+        # Check file size
+        if file_size > MAX_UPLOAD_SIZE:
+            raise HTTPException(status_code=413, detail=f"File too large. Max size is {MAX_UPLOAD_SIZE / 1024 / 1024}MB")
+        
+        # Validate file type (relaxed for mobile uploads)
+        if file.content_type and not (file.content_type.startswith('video/') or file.content_type == 'application/octet-stream'):
+            print(f"⚠️ Warning: Unexpected content type {file.content_type}, but proceeding...")
         
         # Parse metadata
         metadata_dict = {}
         if metadata:
             try:
                 metadata_dict = json.loads(metadata)
-            except:
-                pass
+                print(f"📋 Metadata: {metadata_dict}")
+            except Exception as e:
+                print(f"⚠️ Failed to parse metadata: {e}")
         
-        # Generate unique filename
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        # Generate unique filename with microseconds for uniqueness
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
         filename = f"{user_id}_{timestamp}.mp4"
         file_path = UPLOAD_DIR / filename
+        
+        # Ensure directory exists
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         
         # Save video file
         with open(file_path, "wb") as buffer:
             buffer.write(content)
         
+        # Verify file was saved
+        if not file_path.exists():
+            raise HTTPException(status_code=500, detail="Failed to save file")
+        
+        saved_size = file_path.stat().st_size
+        print(f"✅ File saved: {file_path}")
+        print(f"✅ Saved size: {saved_size} bytes")
+        
         # Generate accessible URL
         file_url = f"{BASE_URL}/videos/{filename}"
         
-        print(f"✅ Video uploaded successfully: {filename}")
-        print(f"📍 File path: {file_path}")
         print(f"🌐 Public URL: {file_url}")
+        print(f"✅ Upload complete!")
         
         return {
             "status": "success",
             "file_url": file_url,
             "filename": filename,
             "user_id": user_id,
+            "size": saved_size,
             "uploaded_at": datetime.utcnow().isoformat(),
             "metadata": metadata_dict
         }
@@ -173,6 +197,8 @@ async def upload_video(
         raise
     except Exception as e:
         print(f"❌ Upload error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/videos/{filename}")
@@ -181,22 +207,41 @@ async def get_video(filename: str):
     Stream video file for playback in browser
     """
     try:
+        # Security: prevent directory traversal
+        if ".." in filename or "/" in filename:
+            raise HTTPException(status_code=400, detail="Invalid filename")
+        
         file_path = UPLOAD_DIR / filename
+        print(f"📺 Streaming video: {filename}")
+        print(f"📁 File path: {file_path}")
+        print(f"✅ File exists: {file_path.exists()}")
+        
         if not file_path.exists():
-            raise HTTPException(status_code=404, detail="Video not found")
+            print(f"❌ File not found: {file_path}")
+            # List available files for debugging
+            available_files = list(UPLOAD_DIR.glob("*.mp4"))
+            print(f"📂 Available files: {[f.name for f in available_files]}")
+            raise HTTPException(status_code=404, detail=f"Video not found: {filename}")
+        
+        file_size = file_path.stat().st_size
+        print(f"📊 File size: {file_size} bytes")
         
         return FileResponse(
-            path=file_path,
+            path=str(file_path),
             media_type="video/mp4",
             filename=filename,
             headers={
                 "Content-Disposition": f'inline; filename="{filename}"',
-                "Accept-Ranges": "bytes"
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=3600"
             }
         )
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ Error streaming video: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/videos/{filename}/download")
@@ -205,12 +250,18 @@ async def download_video_file(filename: str):
     Force download video file
     """
     try:
+        # Security: prevent directory traversal
+        if ".." in filename or "/" in filename:
+            raise HTTPException(status_code=400, detail="Invalid filename")
+        
         file_path = UPLOAD_DIR / filename
+        print(f"📥 Download request: {filename}")
+        
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="Video not found")
         
         return FileResponse(
-            path=file_path,
+            path=str(file_path),
             media_type="video/mp4",
             filename=filename,
             headers={
@@ -220,6 +271,7 @@ async def download_video_file(filename: str):
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ Error downloading video: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/download-video/{video_id}")
@@ -476,6 +528,37 @@ async def dashboard():
     """
     return HTMLResponse(content=html_content)
 
+@app.get("/debug/videos")
+async def debug_videos():
+    """
+    Debug endpoint to check uploaded videos
+    """
+    try:
+        video_files = list(UPLOAD_DIR.glob("*.mp4"))
+        return {
+            "upload_dir": str(UPLOAD_DIR.absolute()),
+            "exists": UPLOAD_DIR.exists(),
+            "total_videos": len(video_files),
+            "videos": [
+                {
+                    "filename": f.name,
+                    "size": f.stat().st_size,
+                    "url": f"{BASE_URL}/videos/{f.name}"
+                }
+                for f in video_files
+            ]
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/")
 def read_root():
-    return {"status": "ok", "dashboard": "/dashboard"}
+    return {
+        "status": "ok",
+        "dashboard": "/dashboard",
+        "endpoints": {
+            "upload": "/upload-video",
+            "videos": "/videos/{filename}",
+            "debug": "/debug/videos"
+        }
+    }
