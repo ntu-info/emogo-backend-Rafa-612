@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from motor.motor_asyncio import AsyncIOMotorClient
 
 MONGODB_URI = "mongodb+srv://Rafa-612:eQ8IOESaO4lyLnm2@rafa-612.qiobhis.mongodb.net/?appName=Rafa-612"  # your URI
-DB_NAME = "EmoGo-Cluster"  # your DB name
+DB_NAME = "emogo_db"  # your DB name
 
 app = FastAPI()
 
