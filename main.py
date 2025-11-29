@@ -354,23 +354,34 @@ async def get_vlogs():
         
         vlogs = [convert_objectid(item) for item in vlogs]
         
-        # Ensure each vlog has a proper video_url
+        # Filter and ensure each vlog has a proper video_url
+        valid_vlogs = []
         for vlog in vlogs:
             video_url = vlog.get('video_url', '')
             
+            # Check if it's a local file path (should be skipped)
+            if video_url and isinstance(video_url, str) and video_url.startswith('file://'):
+                print(f"⚠️ Skipping local file: {vlog.get('_id')}")
+                continue
+            
             # Check if video_url is None or empty or not a valid HTTP URL
             if not video_url or not isinstance(video_url, str) or not video_url.startswith('http'):
-                # If no video_url or it's a local path, construct it from filename
+                # If no video_url or it's a local path, try to construct it from filename
                 if 'filename' in vlog and vlog['filename']:
                     # URL encode the filename to handle spaces and special characters
                     encoded_filename = quote(vlog['filename'])
                     vlog['video_url'] = f"{BASE_URL}/videos/{encoded_filename}"
                     print(f"📝 Constructed video_url for {vlog.get('_id')}: {vlog['video_url']}")
+                    valid_vlogs.append(vlog)
                 else:
-                    print(f"⚠️ Vlog {vlog.get('_id')} has no filename or video_url")
+                    print(f"⚠️ Skipping vlog {vlog.get('_id')} - no valid video source")
+                    continue
+            else:
+                # Has valid HTTP URL
+                valid_vlogs.append(vlog)
         
-        print(f"✅ Returning {len(vlogs)} vlogs")
-        return vlogs
+        print(f"✅ Returning {len(valid_vlogs)} valid vlogs (filtered from {len(vlogs)} total)")
+        return valid_vlogs
     except Exception as e:
         print(f"❌ Error in get_vlogs: {str(e)}")
         import traceback
@@ -633,6 +644,43 @@ async def debug_videos():
         }
     except Exception as e:
         return {"error": str(e)}
+
+@app.delete("/admin/clean-local-vlogs")
+async def clean_local_vlogs():
+    """
+    Admin endpoint to remove vlog records with local file paths
+    """
+    try:
+        print("🧹 Starting cleanup of local file path vlogs...")
+        
+        # Find all vlogs with local file paths
+        vlogs = await app.mongodb["vlogs"].find().to_list(1000)
+        local_file_count = 0
+        deleted_ids = []
+        
+        for vlog in vlogs:
+            video_url = vlog.get('video_url', '')
+            if video_url and isinstance(video_url, str) and video_url.startswith('file://'):
+                # Delete this vlog
+                result = await app.mongodb["vlogs"].delete_one({"_id": vlog["_id"]})
+                if result.deleted_count > 0:
+                    local_file_count += 1
+                    deleted_ids.append(str(vlog["_id"]))
+                    print(f"🗑️  Deleted vlog {vlog['_id']} with local path: {video_url[:100]}...")
+        
+        print(f"✅ Cleanup complete! Removed {local_file_count} local file vlogs")
+        
+        return {
+            "status": "success",
+            "deleted_count": local_file_count,
+            "deleted_ids": deleted_ids,
+            "message": f"Removed {local_file_count} vlog records with local file paths"
+        }
+    except Exception as e:
+        print(f"❌ Error during cleanup: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 def read_root():
