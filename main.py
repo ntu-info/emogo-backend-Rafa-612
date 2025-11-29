@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote, quote
 import io
 import os
 import json
@@ -158,9 +159,12 @@ async def upload_video(
             except Exception as e:
                 print(f"⚠️ Failed to parse metadata: {e}")
         
+        # Clean user_id: remove spaces and special characters for safe filename
+        safe_user_id = user_id.replace(" ", "_").replace("/", "_").replace("\\", "_")
+        
         # Generate unique filename with microseconds for uniqueness
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
-        filename = f"{user_id}_{timestamp}.mp4"
+        filename = f"{safe_user_id}_{timestamp}.mp4"
         file_path = UPLOAD_DIR / filename
         
         # Ensure directory exists
@@ -201,18 +205,24 @@ async def upload_video(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/videos/{filename}")
+@app.get("/videos/{filename:path}")
 async def get_video(filename: str):
     """
     Stream video file for playback in browser
+    Supports URL-encoded filenames (e.g., spaces become %20)
     """
     try:
+        # Decode URL-encoded filename
+        decoded_filename = unquote(filename)
+        print(f"📺 Streaming video request")
+        print(f"📝 Original: {filename}")
+        print(f"📝 Decoded: {decoded_filename}")
+        
         # Security: prevent directory traversal
-        if ".." in filename or "/" in filename:
+        if ".." in decoded_filename:
             raise HTTPException(status_code=400, detail="Invalid filename")
         
-        file_path = UPLOAD_DIR / filename
-        print(f"📺 Streaming video: {filename}")
+        file_path = UPLOAD_DIR / decoded_filename
         print(f"📁 File path: {file_path}")
         print(f"✅ File exists: {file_path.exists()}")
         
@@ -220,18 +230,21 @@ async def get_video(filename: str):
             print(f"❌ File not found: {file_path}")
             # List available files for debugging
             available_files = list(UPLOAD_DIR.glob("*.mp4"))
-            print(f"📂 Available files: {[f.name for f in available_files]}")
-            raise HTTPException(status_code=404, detail=f"Video not found: {filename}")
+            print(f"📂 Available files ({len(available_files)}):")
+            for f in available_files:
+                print(f"   - {f.name}")
+            raise HTTPException(status_code=404, detail=f"Video not found: {decoded_filename}")
         
         file_size = file_path.stat().st_size
-        print(f"📊 File size: {file_size} bytes")
+        print(f"📊 File size: {file_size} bytes ({file_size / 1024 / 1024:.2f} MB)")
+        print(f"✅ Serving video file")
         
         return FileResponse(
             path=str(file_path),
             media_type="video/mp4",
-            filename=filename,
+            filename=decoded_filename,
             headers={
-                "Content-Disposition": f'inline; filename="{filename}"',
+                "Content-Disposition": f'inline; filename="{decoded_filename}"',
                 "Accept-Ranges": "bytes",
                 "Cache-Control": "public, max-age=3600"
             }
@@ -244,28 +257,36 @@ async def get_video(filename: str):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/videos/{filename}/download")
+@app.get("/videos/{filename:path}/download")
 async def download_video_file(filename: str):
     """
     Force download video file
+    Supports URL-encoded filenames
     """
     try:
+        # Decode URL-encoded filename
+        decoded_filename = unquote(filename)
+        print(f"📥 Download request: {decoded_filename}")
+        
         # Security: prevent directory traversal
-        if ".." in filename or "/" in filename:
+        if ".." in decoded_filename:
             raise HTTPException(status_code=400, detail="Invalid filename")
         
-        file_path = UPLOAD_DIR / filename
-        print(f"📥 Download request: {filename}")
+        file_path = UPLOAD_DIR / decoded_filename
+        print(f"� File path: {file_path}")
         
         if not file_path.exists():
+            print(f"❌ File not found: {file_path}")
             raise HTTPException(status_code=404, detail="Video not found")
+        
+        print(f"✅ Serving download")
         
         return FileResponse(
             path=str(file_path),
             media_type="video/mp4",
-            filename=filename,
+            filename=decoded_filename,
             headers={
-                "Content-Disposition": f'attachment; filename="{filename}"'
+                "Content-Disposition": f'attachment; filename="{decoded_filename}"'
             }
         )
     except HTTPException:
@@ -329,6 +350,17 @@ async def get_vlogs():
     try:
         vlogs = await app.mongodb["vlogs"].find().to_list(1000)
         vlogs = [convert_objectid(item) for item in vlogs]
+        
+        # Ensure each vlog has a proper video_url
+        for vlog in vlogs:
+            if 'video_url' not in vlog or not vlog['video_url'].startswith('http'):
+                # If no video_url or it's a local path, construct it from filename
+                if 'filename' in vlog:
+                    # URL encode the filename to handle spaces and special characters
+                    encoded_filename = quote(vlog['filename'])
+                    vlog['video_url'] = f"{BASE_URL}/videos/{encoded_filename}"
+                    print(f"📝 Constructed video_url for {vlog.get('_id')}: {vlog['video_url']}")
+        
         return vlogs
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -406,7 +438,7 @@ async def dashboard():
                 background: #fff;
                 border: 1px solid #ddd;
                 border-radius: 4px;
-                padding: 10px;
+                padding: 15px;
                 margin: 10px 0;
             }
             .count {
@@ -416,6 +448,14 @@ async def dashboard():
             pre {
                 white-space: pre-wrap;
                 word-wrap: break-word;
+            }
+            video {
+                max-width: 100%;
+                border-radius: 4px;
+                margin: 10px 0;
+            }
+            .video-controls {
+                margin-top: 10px;
             }
         </style>
     </head>
@@ -461,37 +501,56 @@ async def dashboard():
                         let html = '';
                         data.forEach((item, index) => {
                             html += `<div class="video-item">
-                                <strong>Video ${index + 1}</strong><br>
-                                User: ${item.user_id || 'N/A'}<br>
-                                Duration: ${item.duration || 'N/A'}s<br>
-                                Time: ${item.timestamp || 'N/A'}<br>`;
+                                <strong>🎬 Video ${index + 1}</strong><br>
+                                👤 User: ${item.user_id || 'N/A'}<br>
+                                ⏱️ Duration: ${item.duration || 'N/A'}s<br>
+                                📅 Time: ${new Date(item.timestamp).toLocaleString() || 'N/A'}<br>`;
+                            
+                            // Determine video source
+                            let videoUrl = null;
+                            let downloadUrl = null;
                             
                             if (item.video_url && item.video_url.includes('/videos/')) {
-                                // Server-hosted video
-                                html += `
-                                    <video width="320" height="240" controls style="margin-top: 10px; border-radius: 4px;">
-                                        <source src="${item.video_url}" type="video/mp4">
-                                        Your browser does not support the video tag.
-                                    </video><br>
-                                    <a href="${item.video_url}/download" class="download-btn" style="margin-top: 10px;">📥 Download Video</a>
-                                `;
+                                // Server-hosted video (new format)
+                                videoUrl = item.video_url;
+                                // Extract filename from URL for download endpoint
+                                const urlParts = item.video_url.split('/videos/');
+                                if (urlParts.length > 1) {
+                                    downloadUrl = '/videos/' + urlParts[1] + '/download';
+                                }
                             } else if (item.video_id) {
-                                // GridFS video
-                                html += `
-                                    <video width="320" height="240" controls style="margin-top: 10px; border-radius: 4px;">
-                                        <source src="/download-video/${item.video_id}" type="video/mp4">
-                                        Your browser does not support the video tag.
-                                    </video><br>
-                                    <a href="/download-video/${item.video_id}" class="download-btn" style="margin-top: 10px;">📥 Download Video</a>
-                                `;
+                                // GridFS video (old format)
+                                videoUrl = '/download-video/' + item.video_id;
+                                downloadUrl = videoUrl;
+                            } else if (item.filename) {
+                                // Fallback: construct URL from filename
+                                videoUrl = '/videos/' + encodeURIComponent(item.filename);
+                                downloadUrl = '/videos/' + encodeURIComponent(item.filename) + '/download';
                             } else if (item.video_url && item.video_url.startsWith('http')) {
                                 // External URL
+                                videoUrl = item.video_url;
+                                downloadUrl = item.video_url;
+                            }
+                            
+                            if (videoUrl) {
                                 html += `
-                                    <video width="320" height="240" controls style="margin-top: 10px; border-radius: 4px;">
-                                        <source src="${item.video_url}" type="video/mp4">
-                                        Your browser does not support the video tag.
-                                    </video><br>
-                                    <a href="${item.video_url}" class="download-btn" style="margin-top: 10px;" target="_blank">📥 Download Video</a>
+                                    <div style="margin-top: 15px;">
+                                        <video width="400" height="300" controls preload="metadata">
+                                            <source src="${videoUrl}" type="video/mp4">
+                                            Your browser does not support the video tag.
+                                        </video>
+                                        <div class="video-controls">
+                                            <a href="${downloadUrl}" class="download-btn" download>📥 Download Video</a>
+                                            <a href="${videoUrl}" class="download-btn" target="_blank" style="background-color: #2196F3;">▶️ Open in New Tab</a>
+                                        </div>
+                                        <details style="margin-top: 10px;">
+                                            <summary style="cursor: pointer; color: #666;">🔍 Debug Info</summary>
+                                            <pre style="font-size: 11px; background: #f5f5f5; padding: 10px; border-radius: 4px; margin-top: 5px;">Video URL: ${videoUrl}
+Download URL: ${downloadUrl}
+Filename: ${item.filename || 'N/A'}
+Video ID: ${item.video_id || 'N/A'}</pre>
+                                        </details>
+                                    </div>
                                 `;
                             } else if (item.video_url) {
                                 // Local file path (not accessible)
