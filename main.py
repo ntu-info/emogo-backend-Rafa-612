@@ -182,8 +182,8 @@ async def upload_video(
         print(f"🆔 File ID: {file_id}")
         print(f"💾 Permanently stored in database!")
         
-        # Generate accessible URL
-        video_url = f"{BASE_URL}/stream-video/{str(file_id)}"
+        # Generate accessible URL (use download-video for better compatibility)
+        video_url = f"{BASE_URL}/download-video/{str(file_id)}"
         
         return {
             "status": "success",
