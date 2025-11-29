@@ -511,8 +511,8 @@ async function loadData(e,t,n){try{const o=await fetch(e);if(!o.ok)throw new Err
 const a=await o.json();if(e==="/sentiments")allData.sentiments=a;else if(e==="/vlogs")allData.vlogs=a;else if(e==="/gps")allData.gps=a;
 document.getElementById(n).textContent=a.length;if(!Array.isArray(a))return void(document.getElementById(t).innerHTML="<pre>Error</pre>");
 if("/vlogs"===e){if(0===a.length)return void(document.getElementById(t).innerHTML='<p class="small">No videos yet</p>');
-let e="";a.forEach(((t,n)=>{let o=null,r=null;t.video_id?(o="/download-video/"+t.video_id,r=t.video_id):t.video_url&&t.video_url.startsWith("http")&&(o=t.video_url,r="video_"+(n+1));
-const d=o?'<a class="link-btn" href="'+o+'" download="'+(r||"video")+'.mp4">⬇ Download</a>':'<p class="small">No video</p>';
+let e="";a.forEach(((t,n)=>{let o=null,r="video.mp4";t.video_id?(o="/download-video/"+t.video_id,r=t.filename||t.video_id+".mp4"):t.video_url&&t.video_url.startsWith("http")&&t.video_url.includes("/download-video/")&&(o=t.video_url,r="video_"+(n+1)+".mp4");
+const d=o?'<a class="link-btn" href="'+o+'" download="'+r+'">⬇ Download</a>':'<p class="small">No video</p>';
 e+='<div class="vlog-item"><div class="vlog-thumb">VIDEO</div><div class="vlog-meta"><div class="vlog-title">Video '+(n+1)+' · '+(t.user_id||"N/A")+
 '</div><p class="small">Duration: '+(t.duration||"N/A")+'s</p></div><div>'+d+"</div></div>"})),
 document.getElementById(t).innerHTML=e}else document.getElementById(t).innerHTML=0===a.length?'<p class="small">No data yet</p>':"<pre>"+JSON.stringify(a,null,2)+"</pre>"}catch(e){
