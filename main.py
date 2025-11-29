@@ -19,3 +19,8 @@ async def shutdown_db_client():
 async def get_items():
     items = await app.mongodb["items"].find().to_list(100)
     return items
+
+
+@app.get("/")
+def read_root():
+    return {"status": "ok"}
