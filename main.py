@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient
 
 MONGODB_URI = "mongodb+srv://Rafa-612:eQ8IOESaO4lyLnm2@rafa-612.qiobhis.mongodb.net/?appName=Rafa-612"  # your URI
@@ -20,6 +20,13 @@ async def get_items():
     items = await app.mongodb["items"].find().to_list(100)
     return items
 
+@app.get("/items")
+async def get_items():
+    try:
+        items = await app.mongodb["items"].find().to_list(100)
+        return items
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 def read_root():
