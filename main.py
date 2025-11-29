@@ -129,8 +129,8 @@ async def upload_video(
     metadata: Optional[str] = Form(None)
 ):
     """
-    Upload video file to server filesystem
-    Returns video URL that can be used to access the video
+    Upload video file to MongoDB GridFS (permanent storage)
+    Returns video_id and URL for accessing the video
     """
     try:
         print(f"📤 Receiving video upload request")
@@ -159,42 +159,42 @@ async def upload_video(
             except Exception as e:
                 print(f"⚠️ Failed to parse metadata: {e}")
         
-        # Clean user_id: remove spaces and special characters for safe filename
+        # Clean user_id for filename
         safe_user_id = user_id.replace(" ", "_").replace("/", "_").replace("\\", "_")
-        
-        # Generate unique filename with microseconds for uniqueness
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
         filename = f"{safe_user_id}_{timestamp}.mp4"
-        file_path = UPLOAD_DIR / filename
         
-        # Ensure directory exists
-        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        # Upload to MongoDB GridFS (永久儲存！)
+        print(f"💾 Uploading to MongoDB GridFS...")
+        file_id = await app.fs.upload_from_stream(
+            filename,
+            content,
+            metadata={
+                "content_type": file.content_type or "video/mp4",
+                "user_id": user_id,
+                "upload_time": datetime.utcnow().isoformat(),
+                "size": file_size,
+                **metadata_dict
+            }
+        )
         
-        # Save video file
-        with open(file_path, "wb") as buffer:
-            buffer.write(content)
-        
-        # Verify file was saved
-        if not file_path.exists():
-            raise HTTPException(status_code=500, detail="Failed to save file")
-        
-        saved_size = file_path.stat().st_size
-        print(f"✅ File saved: {file_path}")
-        print(f"✅ Saved size: {saved_size} bytes")
+        print(f"✅ Video uploaded to MongoDB GridFS")
+        print(f"🆔 File ID: {file_id}")
+        print(f"💾 Permanently stored in database!")
         
         # Generate accessible URL
-        file_url = f"{BASE_URL}/videos/{filename}"
-        
-        print(f"🌐 Public URL: {file_url}")
-        print(f"✅ Upload complete!")
+        video_url = f"{BASE_URL}/stream-video/{str(file_id)}"
         
         return {
             "status": "success",
-            "file_url": file_url,
+            "file_url": video_url,  # 為了向後兼容
+            "video_id": str(file_id),
             "filename": filename,
             "user_id": user_id,
-            "size": saved_size,
+            "size": file_size,
             "uploaded_at": datetime.utcnow().isoformat(),
+            "storage": "mongodb_gridfs",
+            "permanent": True,
             "metadata": metadata_dict
         }
     except HTTPException:
@@ -295,12 +295,56 @@ async def download_video_file(filename: str):
         print(f"❌ Error downloading video: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/download-video/{video_id}")
-async def download_video(video_id: str):
+@app.get("/download-video-file/{filename}")
+async def download_video_file_endpoint(filename: str):
     """
-    Download video file from MongoDB GridFS (legacy support)
+    Force download video file
     """
     try:
+        # Decode URL-encoded filename
+        decoded_filename = unquote(filename)
+        print(f"📥 Download request: {decoded_filename}")
+        
+        # Security: prevent directory traversal
+        if ".." in decoded_filename:
+            raise HTTPException(status_code=400, detail="Invalid filename")
+        
+        file_path = UPLOAD_DIR / decoded_filename
+        print(f"📁 File path: {file_path}")
+        
+        if not file_path.exists():
+            print(f"❌ File not found: {file_path}")
+            # List available files for debugging
+            available_files = list(UPLOAD_DIR.glob("*.mp4"))
+            print(f"📂 Available files: {[f.name for f in available_files]}")
+            raise HTTPException(status_code=404, detail=f"Video not found: {decoded_filename}")
+        
+        print(f"✅ Serving download: {decoded_filename}")
+        
+        return FileResponse(
+            path=str(file_path),
+            media_type="video/mp4",
+            filename=decoded_filename,
+            headers={
+                "Content-Disposition": f'attachment; filename="{decoded_filename}"'
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error downloading video: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/stream-video/{video_id}")
+async def stream_video(video_id: str):
+    """
+    Stream video from MongoDB GridFS for playback
+    """
+    try:
+        print(f"📺 Streaming video from MongoDB: {video_id}")
+        
         # Get file from GridFS
         grid_out = await app.fs.open_download_stream(ObjectId(video_id))
         
@@ -311,15 +355,50 @@ async def download_video(video_id: str):
         filename = grid_out.filename or "video.mp4"
         content_type = grid_out.metadata.get("content_type", "video/mp4") if grid_out.metadata else "video/mp4"
         
+        print(f"✅ Serving video from MongoDB: {filename} ({len(video_content)} bytes)")
+        
         return StreamingResponse(
             io.BytesIO(video_content),
             media_type=content_type,
             headers={
                 "Content-Disposition": f'inline; filename="{filename}"',
-                "Accept-Ranges": "bytes"
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=3600"
             }
         )
     except Exception as e:
+        print(f"❌ Error streaming from MongoDB: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"Video not found: {str(e)}")
+
+@app.get("/download-video/{video_id}")
+async def download_video(video_id: str):
+    """
+    Download video file from MongoDB GridFS
+    """
+    try:
+        print(f"📥 Download video from MongoDB: {video_id}")
+        
+        # Get file from GridFS
+        grid_out = await app.fs.open_download_stream(ObjectId(video_id))
+        
+        # Read file content
+        video_content = await grid_out.read()
+        
+        # Get metadata
+        filename = grid_out.filename or "video.mp4"
+        content_type = grid_out.metadata.get("content_type", "video/mp4") if grid_out.metadata else "video/mp4"
+        
+        print(f"✅ Serving download from MongoDB: {filename}")
+        
+        return StreamingResponse(
+            io.BytesIO(video_content),
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
+    except Exception as e:
+        print(f"❌ Error downloading from MongoDB: {str(e)}")
         raise HTTPException(status_code=404, detail=f"Video not found: {str(e)}")
 
 @app.post("/gps")
@@ -501,6 +580,12 @@ async def dashboard():
     <body>
         <h1>🎭 EmoGo Data Dashboard</h1>
         
+        <div class="section" style="background-color: #d4edda; border-left: 4px solid #28a745;">
+            <h2>✅ Video Storage Status</h2>
+            <p><strong>Permanent Storage:</strong> Videos are now stored in MongoDB GridFS and will persist across server restarts!</p>
+            <p>� Both video files and metadata are permanently stored in the database.</p>
+        </div>
+        
         <div class="section">
             <h2>📊 Data Export</h2>
             <p>Click the buttons below to download data in JSON format:</p>
@@ -566,7 +651,8 @@ async def dashboard():
                                 // Extract filename from URL for download endpoint
                                 const urlParts = item.video_url.split('/videos/');
                                 if (urlParts.length > 1) {
-                                    downloadUrl = '/videos/' + urlParts[1] + '/download';
+                                    const filename = urlParts[1];
+                                    downloadUrl = '/download-video-file/' + filename;
                                 }
                             } else if (item.video_id) {
                                 // GridFS video (old format)
@@ -575,11 +661,11 @@ async def dashboard():
                             } else if (item.filename) {
                                 // Fallback: construct URL from filename
                                 videoUrl = '/videos/' + encodeURIComponent(item.filename);
-                                downloadUrl = '/videos/' + encodeURIComponent(item.filename) + '/download';
+                                downloadUrl = '/download-video-file/' + encodeURIComponent(item.filename);
                             } else if (item.video_url && item.video_url.startsWith('http')) {
                                 // External URL
                                 videoUrl = item.video_url;
-                                downloadUrl = videoUrl;
+                                downloadUrl = item.video_url;
                             }
                             
                             if (videoUrl) {
@@ -695,35 +781,6 @@ async def clean_local_vlogs():
         print(f"❌ Error during cleanup: {str(e)}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/admin/stats")
-async def get_stats():
-    """
-    Get statistics about data collection
-    """
-    try:
-        sentiments_count = await app.mongodb["sentiments"].count_documents({})
-        vlogs_count = await app.mongodb["vlogs"].count_documents({})
-        gps_count = await app.mongodb["gps"].count_documents({})
-        
-        # Get first and last record timestamps
-        first_sentiment = await app.mongodb["sentiments"].find_one(sort=[("timestamp", 1)])
-        last_sentiment = await app.mongodb["sentiments"].find_one(sort=[("timestamp", -1)])
-        
-        return {
-            "status": "ok",
-            "data_collection_start": "2024-12-29T00:00:00Z",
-            "statistics": {
-                "sentiments": sentiments_count,
-                "vlogs": vlogs_count,
-                "gps": gps_count,
-                "total_records": sentiments_count + vlogs_count + gps_count
-            },
-            "first_record": first_sentiment.get("timestamp") if first_sentiment else None,
-            "last_record": last_sentiment.get("timestamp") if last_sentiment else None
-        }
-    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")

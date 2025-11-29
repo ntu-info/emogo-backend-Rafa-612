@@ -9,6 +9,29 @@
 **Status**: ✅ All previous data cleared, fresh start  
 **Note**: All data shown in the dashboard is collected after this date.
 
+## ✅ Video Storage Solution
+
+**MongoDB GridFS**: Video files are permanently stored in the database!
+
+### How it works:
+- ✅ Videos are uploaded to MongoDB GridFS (permanent storage)
+- ✅ Video metadata is stored in MongoDB collections
+- ✅ Videos persist across server restarts
+- ✅ No need for external storage services
+
+### Technical details:
+```
+POST /upload-video → Stores video in MongoDB GridFS → Returns video_id
+GET /stream-video/{video_id} → Retrieves and streams video from MongoDB
+GET /download-video/{video_id} → Downloads video from MongoDB
+```
+
+### Why MongoDB GridFS?
+- **Permanent**: Videos stored in database, not ephemeral filesystem
+- **Simple**: No need for Cloudinary or external services
+- **Free**: Included in MongoDB Atlas free tier (512MB storage)
+- **Reliable**: Built-in replication and backup
+
 ## 📊 Data Dashboard (For TAs & Instructors)
 
 **Main Dashboard**: https://emogo-backend-rafa-612.onrender.com/dashboard
