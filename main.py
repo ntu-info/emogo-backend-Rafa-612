@@ -569,40 +569,77 @@ async def dashboard():
         </section>
 
         <script>
-            function makeSafeText(s){ try { return String(s); } catch(e){ return '' } }
+            function makeSafeText(s){ 
+                try { 
+                    return String(s || 'N/A'); 
+                } catch(e){ 
+                    return 'N/A'; 
+                } 
+            }
 
             async function loadData(endpoint, elementId, countId){
                 try{
+                    console.log('Loading:', endpoint);
                     const res = await fetch(endpoint);
+                    
+                    if(!res.ok){
+                        throw new Error('HTTP ' + res.status);
+                    }
+                    
                     const data = await res.json();
+                    console.log('Loaded', endpoint, ':', data.length, 'items');
+                    
                     if(!Array.isArray(data)){
-                        document.getElementById(elementId).innerHTML = '<pre>Error: expected array\n'+JSON.stringify(data,null,2)+'</pre>';
+                        document.getElementById(elementId).innerHTML = '<pre>Error: expected array\\n'+JSON.stringify(data,null,2)+'</pre>';
                         document.getElementById(countId).textContent = '0';
                         return;
                     }
+                    
                     document.getElementById(countId).textContent = data.length;
 
                     if(endpoint === '/vlogs'){
+                        if(data.length === 0){
+                            document.getElementById(elementId).innerHTML = '<div class="small">No videos yet</div>';
+                            return;
+                        }
+                        
                         // Build modern vlog list with single Open button
-                        const list = document.createElement('div'); list.className='vlog-list';
+                        const list = document.createElement('div'); 
+                        list.className='vlog-list';
+                        
                         data.forEach((item, idx)=>{
-                            const div = document.createElement('div'); div.className='vlog-item';
+                            const div = document.createElement('div'); 
+                            div.className='vlog-item';
 
-                            const thumb = document.createElement('div'); thumb.className='vlog-thumb';
+                            const thumb = document.createElement('div'); 
+                            thumb.className='vlog-thumb';
                             thumb.textContent = 'VIDEO';
 
-                            const meta = document.createElement('div'); meta.className='vlog-meta';
-                            const title = document.createElement('div'); title.innerHTML = `<strong>Video ${idx+1}</strong> <span class="small"> · ${makeSafeText(item.user_id||'N/A')}</span>`;
-                            const info = document.createElement('div'); info.className='small';
-                            info.textContent = `Duration: ${makeSafeText(item.duration||'N/A')}s · Time: ${new Date(item.timestamp||'').toLocaleString()||'N/A'}`;
+                            const meta = document.createElement('div'); 
+                            meta.className='vlog-meta';
+                            
+                            const title = document.createElement('div'); 
+                            title.innerHTML = '<strong>Video ' + (idx+1) + '</strong> <span class="small"> · ' + makeSafeText(item.user_id) + '</span>';
+                            
+                            const info = document.createElement('div'); 
+                            info.className='small';
+                            const timestamp = item.timestamp ? new Date(item.timestamp).toLocaleString() : 'N/A';
+                            info.textContent = 'Duration: ' + makeSafeText(item.duration) + 's · Time: ' + timestamp;
 
                             // Resolve open URL: prefer video_id -> stream endpoint, else use video_url
                             let openUrl = null;
-                            if(item.video_id){ openUrl = '/stream-video/' + item.video_id; }
-                            else if(item.video_url && (item.video_url.startsWith('http') || item.video_url.includes('/stream-video/'))){ openUrl = item.video_url; }
-                            else if(item.filename){ openUrl = '/videos/' + encodeURIComponent(item.filename); }
+                            if(item.video_id){ 
+                                openUrl = '/stream-video/' + item.video_id; 
+                            }
+                            else if(item.video_url && (item.video_url.startsWith('http') || item.video_url.includes('/stream-video/'))){ 
+                                openUrl = item.video_url; 
+                            }
+                            else if(item.filename){ 
+                                openUrl = '/videos/' + encodeURIComponent(item.filename); 
+                            }
 
-                            const actions = document.createElement('div'); actions.className='vlog-actions';
+                            const actions = document.createElement('div'); 
+                            actions.className='vlog-actions';
 
                             if(openUrl){
                                 const a = document.createElement('a');
@@ -613,37 +650,62 @@ async def dashboard():
                                 a.textContent = 'Open Video';
                                 actions.appendChild(a);
                             } else {
-                                const note = document.createElement('div'); note.className='small'; note.textContent = 'No accessible video file'; actions.appendChild(note);
+                                const note = document.createElement('div'); 
+                                note.className='small'; 
+                                note.textContent = 'No accessible video file'; 
+                                actions.appendChild(note);
                             }
 
-                            const dbg = document.createElement('details'); dbg.style.marginTop='8px';
-                            const summ = document.createElement('summary'); summ.style.cursor='pointer'; summ.className='small'; summ.textContent='Debug Info';
-                            const pre = document.createElement('pre'); pre.textContent = 'Video URL: '+makeSafeText(item.video_url)+'\nVideo ID: '+makeSafeText(item.video_id||'N/A')+'\nFilename: '+makeSafeText(item.filename||'N/A');
-                            dbg.appendChild(summ); dbg.appendChild(pre);
+                            const dbg = document.createElement('details'); 
+                            dbg.style.marginTop='8px';
+                            const summ = document.createElement('summary'); 
+                            summ.style.cursor='pointer'; 
+                            summ.className='small'; 
+                            summ.textContent='Debug Info';
+                            const pre = document.createElement('pre'); 
+                            pre.textContent = 'Video URL: ' + makeSafeText(item.video_url) + '\\nVideo ID: ' + makeSafeText(item.video_id) + '\\nFilename: ' + makeSafeText(item.filename);
+                            dbg.appendChild(summ); 
+                            dbg.appendChild(pre);
 
-                            meta.appendChild(title); meta.appendChild(info); meta.appendChild(dbg);
+                            meta.appendChild(title); 
+                            meta.appendChild(info); 
+                            meta.appendChild(dbg);
 
-                            div.appendChild(thumb); div.appendChild(meta); div.appendChild(actions);
+                            div.appendChild(thumb); 
+                            div.appendChild(meta); 
+                            div.appendChild(actions);
                             list.appendChild(div);
                         });
+                        
                         const container = document.getElementById(elementId);
                         container.innerHTML = '';
                         container.appendChild(list);
                     } else {
-                        document.getElementById(elementId).innerHTML = '<pre>'+JSON.stringify(data,null,2)+'</pre>';
+                        // For sentiments and GPS
+                        if(data.length === 0){
+                            document.getElementById(elementId).innerHTML = '<div class="small">No data yet</div>';
+                        } else {
+                            document.getElementById(elementId).innerHTML = '<pre>'+JSON.stringify(data,null,2)+'</pre>';
+                        }
                     }
                 }catch(err){
+                    console.error('Load error:', endpoint, err);
                     document.getElementById(elementId).innerHTML = '<pre>Error loading: '+(err.message||err)+'</pre>';
+                    document.getElementById(countId).textContent = '0';
                 }
             }
 
             function loadAllData(){
+                console.log('Loading all data...');
                 loadData('/sentiments','sentiments-data','sentiment-count');
                 loadData('/vlogs','vlogs-data','vlog-count');
                 loadData('/gps','gps-data','gps-count');
             }
 
-            window.onload = loadAllData;
+            window.onload = function(){
+                console.log('Page loaded, fetching data...');
+                loadAllData();
+            };
         </script>
     </body>
     </html>
