@@ -350,11 +350,15 @@ async def get_vlogs():
     try:
         print("📋 Fetching vlogs from database...")
         vlogs = await app.mongodb["vlogs"].find().to_list(1000)
-        print(f"📊 Found {len(vlogs)} vlogs")
+        print(f"📊 Found {len(vlogs)} vlogs in database")
         
         vlogs = [convert_objectid(item) for item in vlogs]
         
-        # Filter and ensure each vlog has a proper video_url
+        # Get list of actually available video files
+        available_files = {f.name for f in UPLOAD_DIR.glob("*.mp4")}
+        print(f"📂 Found {len(available_files)} actual video files on server")
+        
+        # Filter and ensure each vlog has a proper video_url AND the file exists
         valid_vlogs = []
         for vlog in vlogs:
             video_url = vlog.get('video_url', '')
@@ -368,8 +372,15 @@ async def get_vlogs():
             if not video_url or not isinstance(video_url, str) or not video_url.startswith('http'):
                 # If no video_url or it's a local path, try to construct it from filename
                 if 'filename' in vlog and vlog['filename']:
+                    filename = vlog['filename']
+                    
+                    # Check if file actually exists on server
+                    if filename not in available_files:
+                        print(f"⚠️ Skipping vlog {vlog.get('_id')} - file not found on server: {filename}")
+                        continue
+                    
                     # URL encode the filename to handle spaces and special characters
-                    encoded_filename = quote(vlog['filename'])
+                    encoded_filename = quote(filename)
                     vlog['video_url'] = f"{BASE_URL}/videos/{encoded_filename}"
                     print(f"📝 Constructed video_url for {vlog.get('_id')}: {vlog['video_url']}")
                     valid_vlogs.append(vlog)
@@ -377,7 +388,11 @@ async def get_vlogs():
                     print(f"⚠️ Skipping vlog {vlog.get('_id')} - no valid video source")
                     continue
             else:
-                # Has valid HTTP URL
+                # Has valid HTTP URL - check if file exists
+                if 'filename' in vlog:
+                    if vlog['filename'] not in available_files:
+                        print(f"⚠️ Skipping vlog {vlog.get('_id')} - file not found on server: {vlog['filename']}")
+                        continue
                 valid_vlogs.append(vlog)
         
         print(f"✅ Returning {len(valid_vlogs)} valid vlogs (filtered from {len(vlogs)} total)")
