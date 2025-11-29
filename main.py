@@ -494,223 +494,41 @@ async def get_gps():
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
-    """
-    Dashboard for TAs and instructors to view and download all data
-    """
-    html_content = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>EmoGo Data Dashboard</title>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width,initial-scale=1">
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-        <style>
-            :root{
-                --bg:#0f1724; --card:#0b1220; --muted:#9aa4b2; --accent:#7c3aed; --glass: rgba(255,255,255,0.04);
-            }
-            *{box-sizing:border-box}
-            body{
-                font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
-                margin:0; min-height:100vh; background:linear-gradient(180deg,#071023 0%, #071729 100%);
-                color:#e6eef8; -webkit-font-smoothing:antialiased; padding:28px;
-            }
-            header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
-            h1{font-size:20px;margin:0}
-            .subtitle{color:var(--muted);font-size:13px}
-            .controls{display:flex;gap:10px}
-            .btn{
-                background:linear-gradient(90deg,var(--accent),#4f46e5);padding:10px 14px;border-radius:8px;color:#fff;text-decoration:none;font-weight:600;border:none;cursor:pointer;
-            }
-            .panel{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:20px}
-            .card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 6px 18px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.03)}
-            .card h2{margin:0 0 8px 0;font-size:14px}
-            .count{color:var(--muted);font-size:12px}
-            .data-preview{background:var(--glass);border-radius:8px;padding:14px;max-height:420px;overflow:auto;border:1px solid rgba(255,255,255,0.02)}
-            /* vlog list */
-            .vlog-list{display:flex;flex-direction:column;gap:12px}
-            .vlog-item{display:flex;gap:12px;align-items:center;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.02)}
-            .vlog-thumb{width:120px;height:70px;background:linear-gradient(90deg,#0b1220,#071029);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px}
-            .vlog-meta{flex:1}
-            .vlog-actions{display:flex;flex-direction:column;gap:8px}
-            .link-btn{background:transparent;border:1px solid rgba(255,255,255,0.06);color:#e6eef8;padding:8px 12px;border-radius:8px;text-decoration:none;font-weight:600}
-            .small{color:var(--muted);font-size:12px}
-            pre{background:#071229;padding:10px;border-radius:8px;color:#c8d4e6;overflow:auto;font-size:12px}
-            @media (max-width:900px){.panel{grid-template-columns:repeat(1,1fr)} .vlog-thumb{width:92px;height:60px}}
-        </style>
-    </head>
-    <body>
-        <header>
-            <div>
-                <h1>EmoGo Dashboard</h1>
-                <div class="subtitle">View and manage collected data — videos stored permanently in MongoDB GridFS</div>
-            </div>
-            <div class="controls">
-                <button class="btn refresh-btn" onclick="loadAllData()">🔄 Refresh</button>
-            </div>
-        </header>
-
-        <section class="panel">
-            <div class="card">
-                <h2>Sentiments</h2>
-                <div class="count">Total: <strong id="sentiment-count">Loading...</strong></div>
-                <div class="data-preview" id="sentiments-data">Loading...</div>
-            </div>
-            <div class="card">
-                <h2>Vlogs</h2>
-                <div class="count">Total: <strong id="vlog-count">Loading...</strong></div>
-                <div class="data-preview" id="vlogs-data">Loading...</div>
-            </div>
-            <div class="card">
-                <h2>GPS</h2>
-                <div class="count">Total: <strong id="gps-count">Loading...</strong></div>
-                <div class="data-preview" id="gps-data">Loading...</div>
-            </div>
-        </section>
-
-        <script>
-            function makeSafeText(s){ 
-                try { 
-                    return String(s || 'N/A'); 
-                } catch(e){ 
-                    return 'N/A'; 
-                } 
-            }
-
-            async function loadData(endpoint, elementId, countId){
-                try{
-                    console.log('Loading:', endpoint);
-                    const res = await fetch(endpoint);
-                    
-                    if(!res.ok){
-                        throw new Error('HTTP ' + res.status);
-                    }
-                    
-                    const data = await res.json();
-                    console.log('Loaded', endpoint, ':', data.length, 'items');
-                    
-                    if(!Array.isArray(data)){
-                        document.getElementById(elementId).innerHTML = '<pre>Error: expected array\\n'+JSON.stringify(data,null,2)+'</pre>';
-                        document.getElementById(countId).textContent = '0';
-                        return;
-                    }
-                    
-                    document.getElementById(countId).textContent = data.length;
-
-                    if(endpoint === '/vlogs'){
-                        if(data.length === 0){
-                            document.getElementById(elementId).innerHTML = '<div class="small">No videos yet</div>';
-                            return;
-                        }
-                        
-                        // Build modern vlog list with single Open button
-                        const list = document.createElement('div'); 
-                        list.className='vlog-list';
-                        
-                        data.forEach((item, idx)=>{
-                            const div = document.createElement('div'); 
-                            div.className='vlog-item';
-
-                            const thumb = document.createElement('div'); 
-                            thumb.className='vlog-thumb';
-                            thumb.textContent = 'VIDEO';
-
-                            const meta = document.createElement('div'); 
-                            meta.className='vlog-meta';
-                            
-                            const title = document.createElement('div'); 
-                            title.innerHTML = '<strong>Video ' + (idx+1) + '</strong> <span class="small"> · ' + makeSafeText(item.user_id) + '</span>';
-                            
-                            const info = document.createElement('div'); 
-                            info.className='small';
-                            const timestamp = item.timestamp ? new Date(item.timestamp).toLocaleString() : 'N/A';
-                            info.textContent = 'Duration: ' + makeSafeText(item.duration) + 's · Time: ' + timestamp;
-
-                            // Resolve open URL: prefer video_id -> stream endpoint, else use video_url
-                            let openUrl = null;
-                            if(item.video_id){ 
-                                openUrl = '/stream-video/' + item.video_id; 
-                            }
-                            else if(item.video_url && (item.video_url.startsWith('http') || item.video_url.includes('/stream-video/'))){ 
-                                openUrl = item.video_url; 
-                            }
-                            else if(item.filename){ 
-                                openUrl = '/videos/' + encodeURIComponent(item.filename); 
-                            }
-
-                            const actions = document.createElement('div'); 
-                            actions.className='vlog-actions';
-
-                            if(openUrl){
-                                const a = document.createElement('a');
-                                a.className='link-btn';
-                                a.href = openUrl;
-                                a.target = '_blank';
-                                a.rel = 'noopener noreferrer';
-                                a.textContent = 'Open Video';
-                                actions.appendChild(a);
-                            } else {
-                                const note = document.createElement('div'); 
-                                note.className='small'; 
-                                note.textContent = 'No accessible video file'; 
-                                actions.appendChild(note);
-                            }
-
-                            const dbg = document.createElement('details'); 
-                            dbg.style.marginTop='8px';
-                            const summ = document.createElement('summary'); 
-                            summ.style.cursor='pointer'; 
-                            summ.className='small'; 
-                            summ.textContent='Debug Info';
-                            const pre = document.createElement('pre'); 
-                            pre.textContent = 'Video URL: ' + makeSafeText(item.video_url) + '\\nVideo ID: ' + makeSafeText(item.video_id) + '\\nFilename: ' + makeSafeText(item.filename);
-                            dbg.appendChild(summ); 
-                            dbg.appendChild(pre);
-
-                            meta.appendChild(title); 
-                            meta.appendChild(info); 
-                            meta.appendChild(dbg);
-
-                            div.appendChild(thumb); 
-                            div.appendChild(meta); 
-                            div.appendChild(actions);
-                            list.appendChild(div);
-                        });
-                        
-                        const container = document.getElementById(elementId);
-                        container.innerHTML = '';
-                        container.appendChild(list);
-                    } else {
-                        // For sentiments and GPS
-                        if(data.length === 0){
-                            document.getElementById(elementId).innerHTML = '<div class="small">No data yet</div>';
-                        } else {
-                            document.getElementById(elementId).innerHTML = '<pre>'+JSON.stringify(data,null,2)+'</pre>';
-                        }
-                    }
-                }catch(err){
-                    console.error('Load error:', endpoint, err);
-                    document.getElementById(elementId).innerHTML = '<pre>Error loading: '+(err.message||err)+'</pre>';
-                    document.getElementById(countId).textContent = '0';
-                }
-            }
-
-            function loadAllData(){
-                console.log('Loading all data...');
-                loadData('/sentiments','sentiments-data','sentiment-count');
-                loadData('/vlogs','vlogs-data','vlog-count');
-                loadData('/gps','gps-data','gps-count');
-            }
-
-            window.onload = function(){
-                console.log('Page loaded, fetching data...');
-                loadAllData();
-            };
-        </script>
-    </body>
-    </html>
-    """
-    return HTMLResponse(content=html_content)
+    return HTMLResponse(content="""<!DOCTYPE html>
+<html><head><title>EmoGo Dashboard</title><meta charset="UTF-8">
+<style>body{font-family:Inter,system-ui,sans-serif;margin:0;min-height:100vh;background:#071023;color:#e6eef8;padding:28px}
+header{display:flex;justify-content:space-between;margin-bottom:24px}h1{font-size:20px;margin:0}.subtitle{color:#9aa4b2;font-size:13px}
+.btn{background:#7c3aed;padding:10px 14px;border-radius:8px;color:#fff;border:none;cursor:pointer}
+.panel{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{background:#0b1220;border-radius:12px;padding:18px}
+.card h2{margin:0 0 8px;font-size:14px}.data-preview{background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;max-height:420px;overflow:auto}
+.vlog-item{display:flex;gap:12px;padding:12px;margin:8px 0;background:rgba(255,255,255,0.02);border-radius:8px}
+.vlog-thumb{width:100px;height:60px;background:#071029;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px}
+.vlog-meta{flex:1}.link-btn{background:transparent;border:1px solid rgba(255,255,255,0.1);color:#e6eef8;padding:8px 12px;border-radius:8px;text-decoration:none}
+.small{color:#9aa4b2;font-size:12px}pre{background:#071229;padding:10px;border-radius:8px;overflow:auto;font-size:12px}
+</style></head><body>
+<header><div><h1>EmoGo Dashboard</h1><div class="subtitle">Videos stored in MongoDB GridFS</div></div>
+<button class="btn" onclick="loadAllData()">🔄 Refresh</button></header>
+<section class="panel">
+<div class="card"><h2>Sentiments</h2><div class="small">Total: <strong id="sentiment-count">0</strong></div>
+<div class="data-preview" id="sentiments-data">Loading...</div></div>
+<div class="card"><h2>Vlogs</h2><div class="small">Total: <strong id="vlog-count">0</strong></div>
+<div class="data-preview" id="vlogs-data">Loading...</div></div>
+<div class="card"><h2>GPS</h2><div class="small">Total: <strong id="gps-count">0</strong></div>
+<div class="data-preview" id="gps-data">Loading...</div></div>
+</section>
+<script>
+async function loadData(e,t,n){try{const o=await fetch(e);if(!o.ok)throw new Error("HTTP "+o.status);
+const a=await o.json();if(document.getElementById(n).textContent=a.length,!Array.isArray(a))return void(document.getElementById(t).innerHTML="<pre>Error</pre>");
+if("/vlogs"===e){if(0===a.length)return void(document.getElementById(t).innerHTML='<div class="small">No videos yet</div>');
+let e="";a.forEach(((t,n)=>{let o=null;t.video_id?o="/stream-video/"+t.video_id:t.video_url&&(t.video_url.startsWith("http")||t.video_url.includes("/stream-video/"))?o=t.video_url:t.filename&&(o="/videos/"+encodeURIComponent(t.filename));
+const a=o?'<a class="link-btn" href="'+o+'" target="_blank">Open Video</a>':'<div class="small">No video</div>';
+e+='<div class="vlog-item"><div class="vlog-thumb">VIDEO</div><div class="vlog-meta"><div><strong>Video '+(n+1)+"</strong> <span class='small'>"+
+(t.user_id||"N/A")+'</span></div><div class="small">Duration: '+(t.duration||"N/A")+"s</div></div><div>"+a+"</div></div>"})),
+document.getElementById(t).innerHTML=e}else document.getElementById(t).innerHTML=0===a.length?'<div class="small">No data yet</div>':"<pre>"+JSON.stringify(a,null,2)+"</pre>"}catch(e){
+document.getElementById(t).innerHTML="<pre>Error: "+e.message+"</pre>",document.getElementById(n).textContent="0"}}
+function loadAllData(){loadData("/sentiments","sentiments-data","sentiment-count"),loadData("/vlogs","vlogs-data","vlog-count"),
+loadData("/gps","gps-data","gps-count")}window.onload=loadAllData;
+</script></body></html>""")
 
 @app.get("/debug/videos")
 async def debug_videos():
