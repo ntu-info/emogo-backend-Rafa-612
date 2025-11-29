@@ -1,14 +1,21 @@
-from typing import Optional
-
 from fastapi import FastAPI
+from motor.motor_asyncio import AsyncIOMotorClient
+
+MONGODB_URI = "mongodb+srv://Rafa-612:eQ8IOESaO4lyLnm2@rafa-612.qiobhis.mongodb.net/?appName=Rafa-612"  # your URI
+DB_NAME = "EmoGo-Cluster"  # your DB name
 
 app = FastAPI()
 
+@app.on_event("startup")
+async def startup_db_client():
+    app.mongodb_client = AsyncIOMotorClient(MONGODB_URI)
+    app.mongodb = app.mongodb_client[DB_NAME]
 
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    app.mongodb_client.close()
 
-@app.get("/items/{item_id}")
-def read_item(item_id: int, q: Optional[str] = None):
-    return {"item_id": item_id, "q": q}
+@app.get("/items")
+async def get_items():
+    items = await app.mongodb["items"].find().to_list(100)
+    return items
