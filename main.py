@@ -356,13 +356,18 @@ async def get_vlogs():
         
         # Ensure each vlog has a proper video_url
         for vlog in vlogs:
-            if 'video_url' not in vlog or not vlog.get('video_url', '').startswith('http'):
+            video_url = vlog.get('video_url', '')
+            
+            # Check if video_url is None or empty or not a valid HTTP URL
+            if not video_url or not isinstance(video_url, str) or not video_url.startswith('http'):
                 # If no video_url or it's a local path, construct it from filename
-                if 'filename' in vlog:
+                if 'filename' in vlog and vlog['filename']:
                     # URL encode the filename to handle spaces and special characters
                     encoded_filename = quote(vlog['filename'])
                     vlog['video_url'] = f"{BASE_URL}/videos/{encoded_filename}"
                     print(f"📝 Constructed video_url for {vlog.get('_id')}: {vlog['video_url']}")
+                else:
+                    print(f"⚠️ Vlog {vlog.get('_id')} has no filename or video_url")
         
         print(f"✅ Returning {len(vlogs)} vlogs")
         return vlogs
@@ -370,7 +375,8 @@ async def get_vlogs():
         print(f"❌ Error in get_vlogs: {str(e)}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return empty array instead of raising error to prevent dashboard crash
+        return []
 
 @app.get("/gps")
 async def get_gps():
