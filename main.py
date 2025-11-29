@@ -579,7 +579,7 @@ async def dashboard():
                             } else if (item.video_url && item.video_url.startsWith('http')) {
                                 // External URL
                                 videoUrl = item.video_url;
-                                downloadUrl = item.video_url;
+                                downloadUrl = videoUrl;
                             }
                             
                             if (videoUrl) {
@@ -695,6 +695,35 @@ async def clean_local_vlogs():
         print(f"❌ Error during cleanup: {str(e)}")
         import traceback
         traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/admin/stats")
+async def get_stats():
+    """
+    Get statistics about data collection
+    """
+    try:
+        sentiments_count = await app.mongodb["sentiments"].count_documents({})
+        vlogs_count = await app.mongodb["vlogs"].count_documents({})
+        gps_count = await app.mongodb["gps"].count_documents({})
+        
+        # Get first and last record timestamps
+        first_sentiment = await app.mongodb["sentiments"].find_one(sort=[("timestamp", 1)])
+        last_sentiment = await app.mongodb["sentiments"].find_one(sort=[("timestamp", -1)])
+        
+        return {
+            "status": "ok",
+            "data_collection_start": "2024-12-29T00:00:00Z",
+            "statistics": {
+                "sentiments": sentiments_count,
+                "vlogs": vlogs_count,
+                "gps": gps_count,
+                "total_records": sentiments_count + vlogs_count + gps_count
+            },
+            "first_record": first_sentiment.get("timestamp") if first_sentiment else None,
+            "last_record": last_sentiment.get("timestamp") if last_sentiment else None
+        }
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")

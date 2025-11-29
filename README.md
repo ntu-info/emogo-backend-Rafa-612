@@ -3,6 +3,12 @@
 
 # EmoGo Backend API
 
+## 🆕 Data Collection Status
+
+**Data collection restart date**: December 29, 2024  
+**Status**: ✅ All previous data cleared, fresh start  
+**Note**: All data shown in the dashboard is collected after this date.
+
 ## 📊 Data Dashboard (For TAs & Instructors)
 
 **Main Dashboard**: https://emogo-backend-rafa-612.onrender.com/dashboard
