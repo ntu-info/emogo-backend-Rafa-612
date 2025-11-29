@@ -503,219 +503,146 @@ async def dashboard():
     <head>
         <title>EmoGo Data Dashboard</title>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
         <style>
-            body {
-                font-family: Arial, sans-serif;
-                max-width: 1200px;
-                margin: 0 auto;
-                padding: 20px;
-                background-color: #f5f5f5;
+            :root{
+                --bg:#0f1724; --card:#0b1220; --muted:#9aa4b2; --accent:#7c3aed; --glass: rgba(255,255,255,0.04);
             }
-            h1 {
-                color: #333;
-                text-align: center;
+            *{box-sizing:border-box}
+            body{
+                font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+                margin:0; min-height:100vh; background:linear-gradient(180deg,#071023 0%, #071729 100%);
+                color:#e6eef8; -webkit-font-smoothing:antialiased; padding:28px;
             }
-            .section {
-                background: white;
-                border-radius: 8px;
-                padding: 20px;
-                margin: 20px 0;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+            h1{font-size:20px;margin:0}
+            .subtitle{color:var(--muted);font-size:13px}
+            .controls{display:flex;gap:10px}
+            .btn{
+                background:linear-gradient(90deg,var(--accent),#4f46e5);padding:10px 14px;border-radius:8px;color:#fff;text-decoration:none;font-weight:600;border:none;cursor:pointer;
             }
-            .download-btn {
-                background-color: #4CAF50;
-                color: white;
-                padding: 12px 24px;
-                border: none;
-                border-radius: 4px;
-                cursor: pointer;
-                font-size: 16px;
-                margin: 5px;
-                text-decoration: none;
-                display: inline-block;
-            }
-            .download-btn:hover {
-                background-color: #45a049;
-            }
-            .refresh-btn {
-                background-color: #2196F3;
-            }
-            .refresh-btn:hover {
-                background-color: #0b7dda;
-            }
-            .data-preview {
-                background: #f9f9f9;
-                border: 1px solid #ddd;
-                border-radius: 4px;
-                padding: 15px;
-                margin-top: 10px;
-                max-height: 400px;
-                overflow-y: auto;
-            }
-            .video-item {
-                background: #fff;
-                border: 1px solid #ddd;
-                border-radius: 4px;
-                padding: 15px;
-                margin: 10px 0;
-            }
-            .count {
-                color: #666;
-                font-size: 14px;
-            }
-            pre {
-                white-space: pre-wrap;
-                word-wrap: break-word;
-            }
-            video {
-                max-width: 100%;
-                border-radius: 4px;
-                margin: 10px 0;
-            }
-            .video-controls {
-                margin-top: 10px;
-            }
+            .panel{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:20px}
+            .card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 6px 18px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.03)}
+            .card h2{margin:0 0 8px 0;font-size:14px}
+            .count{color:var(--muted);font-size:12px}
+            .data-preview{background:var(--glass);border-radius:8px;padding:14px;max-height:420px;overflow:auto;border:1px solid rgba(255,255,255,0.02)}
+            /* vlog list */
+            .vlog-list{display:flex;flex-direction:column;gap:12px}
+            .vlog-item{display:flex;gap:12px;align-items:center;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.02)}
+            .vlog-thumb{width:120px;height:70px;background:linear-gradient(90deg,#0b1220,#071029);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px}
+            .vlog-meta{flex:1}
+            .vlog-actions{display:flex;flex-direction:column;gap:8px}
+            .link-btn{background:transparent;border:1px solid rgba(255,255,255,0.06);color:#e6eef8;padding:8px 12px;border-radius:8px;text-decoration:none;font-weight:600}
+            .small{color:var(--muted);font-size:12px}
+            pre{background:#071229;padding:10px;border-radius:8px;color:#c8d4e6;overflow:auto;font-size:12px}
+            @media (max-width:900px){.panel{grid-template-columns:repeat(1,1fr)} .vlog-thumb{width:92px;height:60px}}
         </style>
     </head>
     <body>
-        <h1>🎭 EmoGo Data Dashboard</h1>
-        
-        <div class="section" style="background-color: #d4edda; border-left: 4px solid #28a745;">
-            <h2>✅ Video Storage Status</h2>
-            <p><strong>Permanent Storage:</strong> Videos are now stored in MongoDB GridFS and will persist across server restarts!</p>
-            <p>� Both video files and metadata are permanently stored in the database.</p>
-        </div>
-        
-        <div class="section">
-            <h2>📊 Data Export</h2>
-            <p>Click the buttons below to download data in JSON format:</p>
-            <a href="/sentiments" class="download-btn" download="sentiments.json">📈 Download Sentiments</a>
-            <a href="/vlogs" class="download-btn" download="vlogs.json">🎥 Download Vlogs</a>
-            <a href="/gps" class="download-btn" download="gps.json">📍 Download GPS</a>
-            <button class="download-btn refresh-btn" onclick="loadAllData()">🔄 Refresh Data</button>
-        </div>
+        <header>
+            <div>
+                <h1>EmoGo Dashboard</h1>
+                <div class="subtitle">View and manage collected data — videos stored permanently in MongoDB GridFS</div>
+            </div>
+            <div class="controls">
+                <button class="btn refresh-btn" onclick="loadAllData()">🔄 Refresh</button>
+            </div>
+        </header>
 
-        <div class="section">
-            <h2>😊 Sentiments (Emotion Scores)</h2>
-            <p class="count">Total: <span id="sentiment-count">Loading...</span></p>
-            <div id="sentiments-data" class="data-preview">Loading...</div>
-        </div>
-
-        <div class="section">
-            <h2>🎥 Vlogs (Video Records)</h2>
-            <p class="count">Total: <span id="vlog-count">Loading...</span></p>
-            <div id="vlogs-data" class="data-preview">Loading...</div>
-        </div>
-
-        <div class="section">
-            <h2>📍 GPS Coordinates</h2>
-            <p class="count">Total: <span id="gps-count">Loading...</span></p>
-            <div id="gps-data" class="data-preview">Loading...</div>
-        </div>
+        <section class="panel">
+            <div class="card">
+                <h2>Sentiments</h2>
+                <div class="count">Total: <strong id="sentiment-count">Loading...</strong></div>
+                <div class="data-preview" id="sentiments-data">Loading...</div>
+            </div>
+            <div class="card">
+                <h2>Vlogs</h2>
+                <div class="count">Total: <strong id="vlog-count">Loading...</strong></div>
+                <div class="data-preview" id="vlogs-data">Loading...</div>
+            </div>
+            <div class="card">
+                <h2>GPS</h2>
+                <div class="count">Total: <strong id="gps-count">Loading...</strong></div>
+                <div class="data-preview" id="gps-data">Loading...</div>
+            </div>
+        </section>
 
         <script>
-            async function loadData(endpoint, elementId, countId) {
-                try {
-                    const response = await fetch(endpoint);
-                    const data = await response.json();
-                    
-                    // Check if data is an array
-                    if (!Array.isArray(data)) {
-                        console.error('Expected array but got:', typeof data, data);
-                        document.getElementById(elementId).innerHTML = 
-                            '<p style="color: red;">Error: Invalid data format (expected array)</p><pre>' + 
-                            JSON.stringify(data, null, 2) + '</pre>';
+            function makeSafeText(s){ try { return String(s); } catch(e){ return '' } }
+
+            async function loadData(endpoint, elementId, countId){
+                try{
+                    const res = await fetch(endpoint);
+                    const data = await res.json();
+                    if(!Array.isArray(data)){
+                        document.getElementById(elementId).innerHTML = '<pre>Error: expected array\n'+JSON.stringify(data,null,2)+'</pre>';
                         document.getElementById(countId).textContent = '0';
                         return;
                     }
-                    
                     document.getElementById(countId).textContent = data.length;
-                    
-                    if (endpoint === '/vlogs') {
-                        // Special handling for vlogs with video player
-                        let html = '';
-                        data.forEach((item, index) => {
-                            html += `<div class="video-item">
-                                <strong>🎬 Video ${index + 1}</strong><br>
-                                👤 User: ${item.user_id || 'N/A'}<br>
-                                ⏱️ Duration: ${item.duration || 'N/A'}s<br>
-                                📅 Time: ${new Date(item.timestamp).toLocaleString() || 'N/A'}<br>`;
-                            
-                            // Determine video source
-                            let videoUrl = null;
-                            let downloadUrl = null;
-                            
-                            if (item.video_url && item.video_url.includes('/videos/')) {
-                                // Server-hosted video (new format)
-                                videoUrl = item.video_url;
-                                // Extract filename from URL for download endpoint
-                                const urlParts = item.video_url.split('/videos/');
-                                if (urlParts.length > 1) {
-                                    const filename = urlParts[1];
-                                    downloadUrl = '/download-video-file/' + filename;
-                                }
-                            } else if (item.video_id) {
-                                // GridFS video (old format)
-                                videoUrl = '/download-video/' + item.video_id;
-                                downloadUrl = videoUrl;
-                            } else if (item.filename) {
-                                // Fallback: construct URL from filename
-                                videoUrl = '/videos/' + encodeURIComponent(item.filename);
-                                downloadUrl = '/download-video-file/' + encodeURIComponent(item.filename);
-                            } else if (item.video_url && item.video_url.startsWith('http')) {
-                                // External URL
-                                videoUrl = item.video_url;
-                                downloadUrl = item.video_url;
-                            }
-                            
-                            if (videoUrl) {
-                                html += `
-                                    <div style="margin-top: 15px;">
-                                        <video width="400" height="300" controls preload="metadata">
-                                            <source src="${videoUrl}" type="video/mp4">
-                                            Your browser does not support the video tag.
-                                        </video>
-                                        <div class="video-controls">
-                                            <a href="${downloadUrl}" class="download-btn" download>📥 Download Video</a>
-                                            <a href="${videoUrl}" class="download-btn" target="_blank" style="background-color: #2196F3;">▶️ Open in New Tab</a>
-                                        </div>
-                                        <details style="margin-top: 10px;">
-                                            <summary style="cursor: pointer; color: #666;">🔍 Debug Info</summary>
-                                            <pre style="font-size: 11px; background: #f5f5f5; padding: 10px; border-radius: 4px; margin-top: 5px;">Video URL: ${videoUrl}
-Download URL: ${downloadUrl}
-Filename: ${item.filename || 'N/A'}
-Video ID: ${item.video_id || 'N/A'}</pre>
-                                        </details>
-                                    </div>
-                                `;
-                            } else if (item.video_url) {
-                                // Local file path (not accessible)
-                                html += `<br><span style="color: #f44336;">⚠️ Video stored locally on device (not uploaded to server)</span><br>
-                                         <small style="color: #666;">${item.video_url}</small>`;
+
+                    if(endpoint === '/vlogs'){
+                        // Build modern vlog list with single Open button
+                        const list = document.createElement('div'); list.className='vlog-list';
+                        data.forEach((item, idx)=>{
+                            const div = document.createElement('div'); div.className='vlog-item';
+
+                            const thumb = document.createElement('div'); thumb.className='vlog-thumb';
+                            thumb.textContent = 'VIDEO';
+
+                            const meta = document.createElement('div'); meta.className='vlog-meta';
+                            const title = document.createElement('div'); title.innerHTML = `<strong>Video ${idx+1}</strong> <span class="small"> · ${makeSafeText(item.user_id||'N/A')}</span>`;
+                            const info = document.createElement('div'); info.className='small';
+                            info.textContent = `Duration: ${makeSafeText(item.duration||'N/A')}s · Time: ${new Date(item.timestamp||'').toLocaleString()||'N/A'}`;
+
+                            // Resolve open URL: prefer video_id -> stream endpoint, else use video_url
+                            let openUrl = null;
+                            if(item.video_id){ openUrl = '/stream-video/' + item.video_id; }
+                            else if(item.video_url && (item.video_url.startsWith('http') || item.video_url.includes('/stream-video/'))){ openUrl = item.video_url; }
+                            else if(item.filename){ openUrl = '/videos/' + encodeURIComponent(item.filename); }
+
+                            const actions = document.createElement('div'); actions.className='vlog-actions';
+
+                            if(openUrl){
+                                const a = document.createElement('a');
+                                a.className='link-btn';
+                                a.href = openUrl;
+                                a.target = '_blank';
+                                a.rel = 'noopener noreferrer';
+                                a.textContent = 'Open Video';
+                                actions.appendChild(a);
                             } else {
-                                html += `<br><span style="color: #f44336;">⚠️ No video file uploaded</span>`;
+                                const note = document.createElement('div'); note.className='small'; note.textContent = 'No accessible video file'; actions.appendChild(note);
                             }
-                            
-                            html += `</div>`;
+
+                            const dbg = document.createElement('details'); dbg.style.marginTop='8px';
+                            const summ = document.createElement('summary'); summ.style.cursor='pointer'; summ.className='small'; summ.textContent='Debug Info';
+                            const pre = document.createElement('pre'); pre.textContent = 'Video URL: '+makeSafeText(item.video_url)+'\nVideo ID: '+makeSafeText(item.video_id||'N/A')+'\nFilename: '+makeSafeText(item.filename||'N/A');
+                            dbg.appendChild(summ); dbg.appendChild(pre);
+
+                            meta.appendChild(title); meta.appendChild(info); meta.appendChild(dbg);
+
+                            div.appendChild(thumb); div.appendChild(meta); div.appendChild(actions);
+                            list.appendChild(div);
                         });
-                        document.getElementById(elementId).innerHTML = html || '<p>No data available</p>';
+                        const container = document.getElementById(elementId);
+                        container.innerHTML = '';
+                        container.appendChild(list);
                     } else {
-                        document.getElementById(elementId).innerHTML = 
-                            '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                        document.getElementById(elementId).innerHTML = '<pre>'+JSON.stringify(data,null,2)+'</pre>';
                     }
-                } catch (error) {
-                    document.getElementById(elementId).innerHTML = 
-                        '<p style="color: red;">Error loading data: ' + error.message + '</p>';
+                }catch(err){
+                    document.getElementById(elementId).innerHTML = '<pre>Error loading: '+(err.message||err)+'</pre>';
                 }
             }
 
-            function loadAllData() {
-                loadData('/sentiments', 'sentiments-data', 'sentiment-count');
-                loadData('/vlogs', 'vlogs-data', 'vlog-count');
-                loadData('/gps', 'gps-data', 'gps-count');
+            function loadAllData(){
+                loadData('/sentiments','sentiments-data','sentiment-count');
+                loadData('/vlogs','vlogs-data','vlog-count');
+                loadData('/gps','gps-data','gps-count');
             }
 
-            // Load data on page load
             window.onload = loadAllData;
         </script>
     </body>
