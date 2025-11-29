@@ -1,2 +1,3 @@
 fastapi[all]
 motor[srv]
+uvicorn
